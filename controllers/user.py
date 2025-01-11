@@ -3,6 +3,7 @@ from flask import jsonify, request, Blueprint, g
 from utils import serialize_job
 from function.insert_job import insert_job
 from datetime import datetime
+import json
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -46,8 +47,7 @@ async def update_user():
 
         # Get the request data
         body_data = request.get_json()
-
-        print(body_data, "here is body dat")
+        print(body_data, "here is body data")
 
         # Prepare the fields to update
         update_data = {}
@@ -62,10 +62,19 @@ async def update_user():
 
         # Update job_statuses if provided
         if 'job_statuses' in body_data and isinstance(body_data['job_statuses'], list):
-            update_data['job_statuses'] = [status.lower() for status in body_data['job_statuses']]
+            # Ensure job_statuses is a list of dictionaries with 'label' and 'value'
+            valid_job_statuses = [
+                {
+                    "label": status_entry.get('label', ''),
+                    "value": status_entry.get('value', 0)
+                } for status_entry in body_data['job_statuses']
+                if 'label' in status_entry and 'value' in status_entry
+            ]
+            # Convert to JSON string for the database
+            update_data['job_statuses'] = json.dumps(valid_job_statuses)
 
+        print(update_data, "here is update_data")
 
-        print(update_data, "here is updatedata")
         # If there are fields to update, perform the update
         if update_data:
             updated_user = await db.user.update(
@@ -73,7 +82,7 @@ async def update_user():
                 data=update_data
             )
 
-            user_dict = updated_user.model_dump() 
+            user_dict = updated_user.model_dump()
             return jsonify({"success": True, "user": user_dict}), 200
         else:
             return jsonify({"error": "No valid fields to update"}), 400
@@ -85,6 +94,7 @@ async def update_user():
     finally:
         # Disconnect Prisma client
         await db.disconnect()
+
 
 @user_blueprint.route('/jobs/get', methods=['GET'])
 async def get_user_jobs():
