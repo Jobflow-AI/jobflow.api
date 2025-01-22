@@ -19,26 +19,25 @@ model User {
   job_statuses  Json     @default("[{\"label\":\"bookmarked\",\"value\":0},{\"label\":\"applied\",\"value\":0},{\"label\":\"accepted\",\"value\":0},{\"label\":\"rejected\",\"value\":0}]")
   bookmarked_jobs String[]
   jobs          Tracked_Jobs[]
-  userJobs      User_Jobs[]
   created_at    DateTime @default(now())
 }
 
 // Jobs tracked by users
-model Tracked_Jobs {
-  id       String  @id @default(uuid()) @db.Uuid
-  status   String  @default("applied")
+// model Tracked_Jobs {
+//   id       String  @id @default(uuid()) @db.Uuid
+//   status   String  @default("applied")
 
-  userId   String  @db.Uuid
-  user     User    @relation(fields: [userId], references: [id])
+//   userId   String  @db.Uuid
+//   user     User    @relation(fields: [userId], references: [id])
 
-  jobId    String  @db.Uuid
-  job      Job     @relation(fields: [jobId], references: [id]) // Relation to the Job model
+//   jobId    String  @db.Uuid
+//   job      Job     @relation(fields: [jobId], references: [id]) // Relation to the Job model
 
-  @@unique([jobId, userId]) // Ensures a user can only apply to a job once
-}
+//   @@unique([jobId, userId]) // Ensures a user can only apply to a job once
+// }
 
 // Jobs create by user(all )
-model User_Jobs {
+model Tracked_Jobs {
   id            String  @id @default(uuid()) @db.Uuid
   title         String
   job_link      String?
@@ -71,7 +70,7 @@ model Company {
   socials          Json?    // JSON field to store all social media links
 
   jobs             Job[]
-  userJobs         User_Jobs[]
+  trackedJobs      Tracked_Jobs[]
 
   @@unique([company_name]) // Ensures that company names are unique
 }
@@ -93,8 +92,6 @@ model Job {
 
   companyId     String   @db.Uuid
   company       Company  @relation(fields: [companyId], references: [id])
-
-  appliedJobs       Tracked_Jobs[]  // Relation to the tracked_jobs model
 
   @@unique([title, companyId])  // This creates a unique index on title and companyId
 }

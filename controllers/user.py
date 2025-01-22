@@ -115,12 +115,11 @@ async def get_user_jobs():
         userAppliedJobs = await db.tracked_jobs.find_many(
             where={"userId": user.id},
             include={
-                'job': {
-                    'include': {'company': True}
-                }
+                'company': True
             }
         )
         jobs_serialized = [job.model_dump() for job in userAppliedJobs]
+        print(jobs_serialized, "here are the jobs")
         return jsonify({"success": True, "jobs": jobs_serialized}), 200
 
     except Exception as e:
@@ -134,8 +133,8 @@ async def get_user_jobs():
 
 
 
-@user_blueprint.route('/job/apply', methods=['POST'])
-async def apply_job():
+@user_blueprint.route('/job/track', methods=['POST'])
+async def track_job():
     try:
         await db.connect()
 
@@ -144,17 +143,24 @@ async def apply_job():
         if not jobId:
             return jsonify({"success": False, "error": "JobId is missing"}), 400
 
+        status = request.args.get('status', default=None, type=str)
+        if not status:
+            return jsonify({"success": False, "error": "Status is missing"}), 400
+
         job = await db.job.find_unique(where={"id": jobId})
         if not job:
             return jsonify({"success": False, "error": "Job does not exist"}), 404
+
+        print(job, "here is the job")
 
         # Get the current user from the request context
         currentUser = g.user
 
         # Check if the job has already been applied for by the user
         applied_job = await db.tracked_jobs.find_first(
-            where={"userId": currentUser.id, "jobId": jobId}
+            where={"userId": currentUser.id, "title": job.title, "companyId": job.companyId}
         )
+        
         if applied_job:
             return jsonify({"success": False, "error": "Job already applied"}), 400
 
@@ -162,8 +168,15 @@ async def apply_job():
         await db.tracked_jobs.create(
             data={
                 "userId": currentUser.id,
-                "jobId": jobId,
-                "status": 'applied'
+                "title": job.title,
+                "job_link": job.job_link,
+                "companyId": job.companyId,
+                "job_location": job.job_location,
+                "job_type": job.job_type,
+                "job_salary": job.job_salary,
+                "source": job.source,
+                "posted": job.posted,
+                "status": status
             }
         )
 
@@ -257,40 +270,22 @@ async def create_job():
         if not user:
             return jsonify({"success": False, "message": "User not exists"}), 400
         
-        try:
-            # Attempt to insert the job
-            job = await insert_job(body_data)
-            print(job, "here is the job")
-
-            # If successful, create a tracked job entry
-            await db.tracked_jobs.create(
-                data={
-                    "userId": currentUser.id,
-                    "jobId": job.id,
-                    "status": body_data.status
-                }
-            )
-            return jsonify({"success": True, "message": "Job saved to user"}), 200
-
-        except Exception as insert_error:
-            print(insert_error, "error during job insertion")
-            # If insert_job fails, create a user job entry
-            await db.connect()
-            await db.user_jobs.create(
-                data={
-                    "userId": currentUser.id,
-                    "title": body_data.get('title').lower(),
-                    "job_link": body_data.get('job_link'),
-                    "companyId": body_data.get('companyId'),
-                    "job_location": body_data.get('job_location'),
-                    "job_type": body_data.get('job_type'),
-                    "job_salary": body_data.get('job_salary'),
-                    "source": body_data.get('source'),
-                    "posted": body_data.get('posted', datetime.now().isoformat()),
-                    "status": body_data.get('status')
-                }
-            )
-            return jsonify({"success": True, "error": "User_job created"}), 500
+        # Create a tracked job entry
+        await db.tracked_jobs.create(
+            data={
+                "userId": currentUser.id,
+                "title": body_data.get('title').lower(),
+                "job_link": body_data.get('job_link'),
+                "companyId": body_data.get('companyId'),
+                "job_location": body_data.get('job_location'),
+                "job_type": body_data.get('job_type'),
+                "job_salary": body_data.get('job_salary'),
+                "source": body_data.get('source'),
+                "posted": body_data.get('posted', datetime.now().isoformat()),
+                "status": body_data.get('status')
+            }
+        )
+        return jsonify({"success": True, "message": "Job saved to user"}), 200
 
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging

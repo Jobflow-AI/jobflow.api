@@ -2,6 +2,7 @@ from flask import Flask
 from controllers.auth import auth_blueprint
 from controllers.job import job_blueprint
 from controllers.user import user_blueprint
+from controllers.chat import chat_blueprint
 from flask_cors import CORS
 from middleware import protect_routes  
 
@@ -30,6 +31,7 @@ async def protect_user_routes():
 app.register_blueprint(auth_blueprint, url_prefix='/api/auth')
 app.register_blueprint(job_blueprint, url_prefix='/api/job')
 app.register_blueprint(user_blueprint, url_prefix='/api/user')
+app.register_blueprint(chat_blueprint, url_prefix='/api/chat')
 
 if __name__ == '__main__':
     app.run(debug=True)
