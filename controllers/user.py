@@ -263,34 +263,77 @@ async def create_job():
         await db.connect()
         body_data = request.get_json()
         print(body_data, "here is the body data")
-        
-        # Get the current user from the request context
+
+        # Fetch the current user
         currentUser = g.user
         user = await db.user.find_unique(where={"id": currentUser.id})
         if not user:
-            return jsonify({"success": False, "message": "User not exists"}), 400
-        
+            return jsonify({"success": False, "message": "User does not exist"}), 400
+
+        # Prepare fields with validation
+        title = body_data.get('title').lower() if body_data.get('title') else None
+        company_id = body_data.get('companyId')  # Optional
+        company_name = body_data.get('company_name')  # Optional
+        company_logo = body_data.get('company_logo') 
+
+        if not title:
+            return jsonify({"success": False, "message": "Job title is required"}), 400
+
+        # Handle company logic
+        if not company_id:
+            if not company_name:
+                return jsonify({"success": False, "message": "Either companyId or company_name is required"}), 400
+
+            # Check if the company exists
+            company = await db.company.find_unique(where={"company_name": company_name.lower()})
+            if not company:
+                # Create a new company if it doesn't exist
+                company_data = {
+                    "company_name": company_name.lower(),
+                    "company_logo": company_logo,
+                    "description": body_data.get("company_description"),
+                }
+                company = await db.company.create(data=company_data)
+                print(company, "New company created")
+            
+            # Assign the newly created company's ID
+            company_id = company.id
+
+        # Check for duplicate job entry
+        existing_job = await db.tracked_jobs.find_first(
+            where={
+                "title": title,
+                "companyId": company_id,
+                "userId": currentUser.id,
+            }
+        )
+        if existing_job:
+            return jsonify({"success": False, "message": "Duplicate job entry exists"}), 400
+
         # Create a tracked job entry
         await db.tracked_jobs.create(
             data={
                 "userId": currentUser.id,
-                "title": body_data.get('title').lower(),
+                "title": title,
                 "job_link": body_data.get('job_link'),
-                "companyId": body_data.get('companyId'),
+                "companyId": company_id,
                 "job_location": body_data.get('job_location'),
                 "job_type": body_data.get('job_type'),
                 "job_salary": body_data.get('job_salary'),
+                "job_description": body_data.get('job_description'),
+                "skills_required": body_data.get('skills_required'),
                 "source": body_data.get('source'),
-                "posted": body_data.get('posted', datetime.now().isoformat()),
-                "status": body_data.get('status')
+                "source_logo": body_data.get('source_logo'),
+                "status": body_data.get('status', "applied"),
             }
         )
         return jsonify({"success": True, "message": "Job saved to user"}), 200
 
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
+        print(e, "here is the error")
         return jsonify({"success": False, "error": str(e)}), 500
 
     finally:
         await db.disconnect()
+
 

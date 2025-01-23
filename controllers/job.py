@@ -63,6 +63,7 @@ async def get_job():
         if title:
             filter['title'] = {"contains": title}
 
+
         # Fetch jobs from the database including the company relation
         jobs = await db.job.find_many(
             where=filter,
@@ -77,7 +78,7 @@ async def get_job():
         return jsonify({'jobs': serialized_jobs, 'page': page, 'page_size': page_size}), 200
 
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
+        print(e, "here is the error inside get")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
     finally:
