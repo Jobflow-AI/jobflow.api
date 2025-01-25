@@ -4,7 +4,7 @@ from db.prisma import db
 from utils import serialize_job
 import os
 from function.utils import scrape_job_link
-from function.crawler.job_portals import scrape_ycombinator_jobpage
+from function.crawler.job_portals import scrape_ycombinator_jobpage, scrape_linkedin_jobpage
 from utils.functions import checkExistingJob
 from middleware import protect_routes
 from functools import wraps
@@ -155,9 +155,9 @@ async def scrape_job():
         #     print(portal)
         #     # jobdata = await scrape_indeed(soup)
 
-        # elif portal == 'ycombinator':
-        #     print(portal)
-        #     # await scrape_ycombinator(soup)
+        elif portal == 'linkedin':
+            print(portal)
+            jobdata = await scrape_linkedin_jobpage(soup, job_link)
 
         # # elif portal == 'internshala':
         # #     await scrape_internshala(soup)

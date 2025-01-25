@@ -44,7 +44,7 @@ def fetch_job_salary(job_url):
 async def scrape_job_link(job_link, portal):
     try:
         if job_link:
-            if portal == 'ycombinator':
+            if portal == 'linkedin':
                 response = requests.get(job_link, headers=headers)
             else:
                 proxy_url = f"http://api.scraperapi.com?api_key={scraperapi_key}&url={job_link}"

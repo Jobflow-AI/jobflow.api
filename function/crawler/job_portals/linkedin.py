@@ -39,3 +39,51 @@ async def scrape_linkedin(soup):
                     except Exception as e:
                         print(f"Error inserting job for {job_info.get('title', 'unknown')}: {e}")
                     
+
+async def scrape_linkedin_jobpage(soup, job_link):
+    portal = 'linkedin'
+    
+    if not soup:
+        return None
+    
+    # Initialize job data dictionary with default values
+    job_info = {
+        "title": None,
+        "job_link": job_link,
+        "job_location": None,
+        "company_name": None,
+        "company_logo": None,
+        "source": portal
+    }
+    
+    try:
+        # Extract job title
+        title_element = soup.find('h3', class_="sub-nav-cta__header")
+        if title_element:
+            job_info["title"] = title_element.text.strip()
+        
+        # Extract company details and location
+        job_title_element = soup.find('div', class_='sub-nav-cta__text-container')
+        if job_title_element:
+            company_element = job_title_element.find('a', class_="sub-nav-cta__optional-url")
+            location_element = job_title_element.find('span')
+            
+            if company_element:
+                job_info["company_name"] = company_element.text.strip()
+            if location_element:
+                job_info["job_location"] = location_element.text.strip()
+        
+        # Extract company logo
+        company_logo_element = soup.find('div', class_='sub-nav-cta__content')
+        if company_logo_element and (img_tag := company_logo_element.find('img')):
+            job_info["company_logo"] = img_tag.get('data-delayed-url')
+        
+        # Validate required fields
+        if not all([job_info["title"], job_info["company_name"]]):
+            print(f"Warning: Missing required fields for job listing: {job_link}")
+            
+        return job_info
+        
+    except Exception as e:
+        print(f"Error scraping LinkedIn job page: {str(e)}")
+        return None

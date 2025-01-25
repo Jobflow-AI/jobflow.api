@@ -2,7 +2,8 @@
 
 # Import everything from individual job portal files
 from .glassdoor import scrape_glassdoor
-from .linkedin import scrape_linkedin
+from .linkedin import scrape_linkedin 
+from .linkedin import scrape_linkedin_jobpage
 from .simplyhired import scrape_simplyhired
 from .indeed import scrape_indeed
 from .upwork import scrape_upwork
