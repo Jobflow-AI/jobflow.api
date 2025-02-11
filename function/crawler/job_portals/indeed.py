@@ -1,4 +1,4 @@
-from function.utils import createFile, fetch_job_salary
+from function.utils import createFile, fetch_job_details
 from function.insert_job import insert_job
 async def scrape_indeed(soup):
     portal = 'indeed'
@@ -12,13 +12,10 @@ async def scrape_indeed(soup):
                 job_location_element = job.find('div', class_='css-1restlb eu4oa1w0')
                 # job_salary_element = job.find('div', class_='salary-snippet-container')
                 job_link_element = job.find('a', class_='jcs-JobTitle')
+                job_link = None
                 if job_link_element:
                     job_link = f"https://in.indeed.com{job_link_element['href']}"
-                    title_element = job_link_element.find('span')
-                
-                    
-                    print("before create file", company_name_element, job_link, )
-                    createFile(file, title_element.text.strip(), company_name_element.text.strip(), job_link, job_location_element.text.strip())
+                    title_element = job_link_element.find('span')                        
 
                     if title_element and company_name_element and job_location_element:
                         job_info = {
@@ -30,8 +27,7 @@ async def scrape_indeed(soup):
                             "source": portal
                         }
                         try:
-                            print("Inserting job data:", job_info)  # Debugging log
                             await insert_job(job_info)
-                            print("Insert successful for:", job_info["title"])
+                            createFile(file, title_element.text.strip(), company_name_element.text.strip(), job_link, job_location_element.text.strip(), None, None, None, None, portal, None)
                         except Exception as e:
                             print(f"Error inserting job for {job_info.get('title', 'unknown')}: {e}")

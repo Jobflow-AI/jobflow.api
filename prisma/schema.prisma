@@ -62,7 +62,7 @@ model Tracked_Jobs {
 
 model Company {
   id               String   @id @default(uuid()) @db.Uuid
-  company_name     String
+  company_name     String   @unique
   description      String?
   about            Json?
   company_link     String?
@@ -79,10 +79,15 @@ model Job {
   id            String   @id @default(uuid()) @db.Uuid
   title         String
   job_link      String
-  job_type      String
+  job_type      String?
   apply_link    String?
   job_location  String?
+  salary_min         Float?   
+  salary_max         Float?
   job_salary    String?  
+  experience_min     Int?     
+  experience_max     Int?   
+  experience    String? 
   job_description    String? 
   skills_required    String? 
   source        String
@@ -91,7 +96,7 @@ model Job {
   created_at    DateTime @default(now())
 
   companyId     String   @db.Uuid
-  company       Company  @relation(fields: [companyId], references: [id])
+  company       Company?  @relation(fields: [companyId], references: [id])
 
   @@unique([title, companyId])  // This creates a unique index on title and companyId
 }

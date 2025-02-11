@@ -54,10 +54,10 @@ async def scrape_ycombinator(soup):
                     "source": portal
                 }
 
-                print(job_info, "here")
 
                 # Insert the job info into the database
                 await insert_job(job_info)
+                createFile(file, title, company_name.text.strip() if company_name else None, job_link, job_location, None, None, job_salary, source=portal)
 
 async def scrape_ycombinator_jobpage(soup, job_link):
     portal = 'ycombinator'
