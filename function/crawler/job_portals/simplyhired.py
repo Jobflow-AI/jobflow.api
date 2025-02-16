@@ -21,12 +21,20 @@ async def scrape_simplyhired(soup):
                 job_location = job_location_element.text.strip() if job_location_element else "N/A"
                 job_salary = job_salary_element.text.strip() if job_salary_element else "N/A"
 
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
+
                 job_info = {
                     "title": title,
                     "company_name": company_name,
                     "job_link": job_link,
                     "job_location": job_location,
                     "job_salary": job_salary,
+                    "salary_min": salary_min,
+                    "salary_max": salary_max,
                     "source": portal
                 }
                 await insert_job(job_info)

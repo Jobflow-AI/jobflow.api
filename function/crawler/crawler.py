@@ -25,14 +25,14 @@ headers = {
 }
 
 
-searchKeyword = 'salesforce developer'
+searchKeyword = 'web developer'
 searchKeyword = urllib.parse.quote(searchKeyword)  # Encodes spaces as %20
 
 
 
 jobPortals = {
-    # "glassdoor": f"https://www.glassdoor.co.in/Job/india-{searchKeyword}-jobs-SRCH_IL.0,5_IN115_KO6,27.htm?sc.keyword={searchKeyword}&sortBy=date_desc",
-    "linkedin": f"https://www.linkedin.com/jobs/search?keywords={searchKeyword}",
+    "glassdoor": f"https://www.glassdoor.co.in/Job/india-{searchKeyword}-jobs-SRCH_IL.0,5_IN115_KO6,27.htm?sc.keyword={searchKeyword}&sortBy=date_desc",
+    # "linkedin": f"https://www.linkedin.com/jobs/search?keywords={searchKeyword}",
     # "simplyhired": f"https://www.simplyhired.co.in/search?q={searchKeyword}",
     # "indeed": f"https://in.indeed.com/jobs?q={searchKeyword}",
     # "ycombinator": f"https://www.workatastartup.com/companies?query={searchKeyword}&sortBy=keyword",

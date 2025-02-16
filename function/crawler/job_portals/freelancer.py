@@ -24,12 +24,19 @@ async def scrape_freelancer(soup):
                     skills = skills_section.find_all('a', class_='JobSearchCard-primary-tagsLink')
                     skills_required = [skill.text.strip() for skill in skills if skill.text.strip()]
 
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
 
                 job_info = {
                     "title": title,
                     "job_link": f"https://www.freelancer.com{job_link}",
                     "job_location": job_location,
                     "job_salary": job_salary,
+                    "salary_min": salary_min,
+                    "salary_max": salary_max,
                     "job_description": job_description,
                     "skills_required": skills_required,
                     "source": portal

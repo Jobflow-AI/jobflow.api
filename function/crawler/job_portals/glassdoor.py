@@ -34,7 +34,12 @@ async def scrape_glassdoor(soup):
                         skills_text = skills_section.text.strip().replace('Skills:', '').strip()
                         skills = [skill.strip() for skill in skills_text.split(',')]
                 
- 
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)   
+
                 if title and company_name and job_link and job_location:
                     job_info = {
                         "title": title.text.strip(),
@@ -43,6 +48,8 @@ async def scrape_glassdoor(soup):
                         "job_link": job_link,
                         "job_location": job_location.text.strip(),
                         "job_salary": job_salary.text.strip() if job_salary else None,
+                        "salary_min": salary_min,
+                        "salary_max": salary_max,
                         "skills_required": skills,
                         "experience_level": None,
                         "job_description": job_description,

@@ -1,5 +1,5 @@
 
-from function.utils import createFile, fetch_job_details
+from function.utils import createFile, fetch_job_details, extract_salary
 from function.insert_job import insert_job
 async def scrape_upwork(soup):
     portal = 'upwork'
@@ -18,6 +18,8 @@ async def scrape_upwork(soup):
                 job_info_list = job.find('ul', class_='job-tile-info-list')
                 experience_level = None
                 job_salary = None
+                salary_min = None
+                salary_max = None
 
                 if job_info_list:
                     for item in job_info_list.find_all('li'):
@@ -28,6 +30,9 @@ async def scrape_upwork(soup):
                             budget_strong_tags = item.find_all('strong')
                             if len(budget_strong_tags) > 1:
                                 job_salary = budget_strong_tags[1].text.strip()  
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
 
                 # Extract Skills Required
                 skills_section = job.find('div', class_='air3-token-container')
@@ -42,10 +47,11 @@ async def scrape_upwork(soup):
                     "company_name": "Upwork",
                     "job_location": job_location,
                     "job_salary": job_salary,
+                    "salary_min": salary_min,
+                    "salary_max": salary_max,
                     "skills_required": skills_required,
                     "experience_level": experience_level,
                     "source": portal
                 }
                 await insert_job(job_info)
-                # print Acknowledgement for adding in database
                 createFile(file, title, None, f"https://www.upwork.com{job_link}", job_location, None, skills_required, experience_level, job_salary, portal,"Remote")

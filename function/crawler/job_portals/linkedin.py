@@ -19,6 +19,12 @@ async def scrape_linkedin(soup):
                     if img_tag: 
                         company_logo = img_tag['data-delayed-url']
 
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
+
                 if title and company_name and job_link and job_location:
                     job_info = {
                         "title": title.text.strip(),
@@ -27,6 +33,8 @@ async def scrape_linkedin(soup):
                         "job_link": job_link['href'].strip(),
                         "job_location": job_location.text.strip(),
                         "job_salary": job_salary,
+                        "salary_min": salary_min,
+                        "salary_max": salary_max,
                         "experience_level": experience_level,
                         "job_type": job_type,
                         "source": portal,

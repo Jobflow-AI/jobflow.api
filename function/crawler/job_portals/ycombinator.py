@@ -41,7 +41,12 @@ async def scrape_ycombinator(soup):
                     job_salary_element = job_details.find('div', class_="company-title")
                     if job_salary_element:
                         job_salary = job_salary_element.find('div', class_='text-gray-500 my-2').find('span').text.strip()
-                        print(job_salary)
+
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
 
                 # Construct job info dictionary
                 job_info = {
@@ -51,9 +56,10 @@ async def scrape_ycombinator(soup):
                     "company_name": company_name.text.strip() if company_name else None,
                     "company_logo": company_logo,
                     "job_salary": job_salary,
+                    "salary_min": salary_min,
+                    "salary_max": salary_max,
                     "source": portal
                 }
-
 
                 # Insert the job info into the database
                 await insert_job(job_info)

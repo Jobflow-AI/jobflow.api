@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import os
+import re
 
 scraperapi_key = os.getenv('SCRAPER_API')
 
@@ -91,3 +92,21 @@ async def scrape_job_link(job_link, portal):
     except requests.exceptions.RequestException as e:
         print(f"Failed to scrape {job_link}: {e}")
         return None
+
+def extract_salary(job_salary):
+    if not job_salary:
+        return None, None
+
+    job_salary = re.sub(r'\(.*?\)', '', job_salary).strip()
+
+    salary_values = re.findall(r'[\d,]+(?:\.\d+)?', job_salary)
+
+    # Determine salary_min and salary_max
+    if len(salary_values) == 2:  
+        salary_min, salary_max = salary_values
+    elif len(salary_values) == 1:  
+        salary_min = salary_max = salary_values[0]
+    else:
+        salary_min = salary_max = None
+
+    return salary_min, salary_max
