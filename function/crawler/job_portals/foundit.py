@@ -4,11 +4,10 @@ from function.insert_job import insert_job
 async def scrape_foundit(soup):
     portal = 'foundit'
 
-    job_cards = soup.find_all("div", class_="cardContainer")
-    print(f"✅ Found {len(job_cards)} job listings.")
+    job_list = soup.find_all("div", class_="srpResultCard")
 
-    job_list = []
-    if job_cards:
+    if job_list:
+        job_cards = job_list
         with open(f"{portal}_jobs.txt", "w", encoding="utf-8") as file:
             for job in job_cards:
                 title = job.find("div", id="jobCardTitle").text.strip()
@@ -22,10 +21,11 @@ async def scrape_foundit(soup):
 
                 job_info = {
                     "title": title,
-                    "company": company,
-                    "location": location,
+                    "job_id": job_id,
+                    "company_name": company,
+                    "job_location": location,
                     "experience": experience,
-                    "posted_time": posted_time,
+                    "posted": posted_time,
                     "job_link": job_link,
                     "source": portal
                 }

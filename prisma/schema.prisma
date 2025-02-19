@@ -30,8 +30,8 @@ model Tracked_Jobs {
   job_id        String? @unique
   apply_link    String?
   job_location  String?
-  salary_min    Float?   
-  salary_max    Float?
+  salary_min    String?   
+  salary_max    String?
   job_salary    String?  
   experience_min Int?     
   experience_max Int?   
@@ -74,8 +74,8 @@ model Job {
   job_id        String? @unique
   apply_link    String?
   job_location  String?
-  salary_min    Float?   
-  salary_max    Float?
+  salary_min    String?   
+  salary_max    String?
   job_salary    String?  
   experience_min Int?     
   experience_max Int?   

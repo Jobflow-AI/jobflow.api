@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from function.crawler.crawler import scrapejobsdata
+from function.crawler.run_crawler import run_crawler
 from db.prisma import db
 from utils import serialize_job
 import os
@@ -32,20 +33,23 @@ def protect_route():
 @job_blueprint.route('/', methods=['GET'])
 async def create_jobs():   
     try:
-        await scrapejobsdata()
+        if not db.is_connected():
+            await db.connect()
+        await run_crawler()
         return "Successfully inserted job", 201
     
     except Exception as e:
-        print(e, "Error in create_job function")  # Output the error to the console for debugging
+        print(e, "Error in create_jobs function")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
-
-
+    finally:
+        await db.disconnect()
 
 @job_blueprint.route('/get', methods=['GET'])
 async def get_job():   
     try:
-        await db.connect()
+        if not db.is_connected():
+            await db.connect()
 
         page = request.args.get('page', default=1, type=int)
         source = request.args.get('portal', default=None, type=str)
@@ -62,7 +66,6 @@ async def get_job():
             filter['source'] = source
         if title:
             filter['title'] = {"contains": title}
-
 
         # Fetch jobs from the database including the company relation
         jobs = await db.job.find_many(
@@ -89,7 +92,8 @@ async def get_job():
 @job_blueprint.route('/get/id', methods=['GET'])
 async def getJobId():   
     try:
-        await db.connect()
+        if not db.is_connected():
+            await db.connect()
 
         jobId = request.args.get('jobId', default=1, type=int)
 
@@ -114,7 +118,8 @@ async def getJobId():
 @job_blueprint.route('/get/company/list', methods=['GET'])
 async def get_companies_list():   
     try:
-        await db.connect()
+        if not db.is_connected():
+            await db.connect()
 
         # Fetch jobs from the database including the company relation
         companies = await db.company.find_many()

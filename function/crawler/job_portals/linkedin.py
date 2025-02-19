@@ -1,4 +1,4 @@
-from function.utils import createFile, fetch_job_details
+from function.utils import createFile, fetch_job_details, extract_salary
 from function.insert_job import insert_job
 async def scrape_linkedin(soup):
      portal = 'linkedin'

@@ -99,12 +99,12 @@ def extract_salary(job_salary):
 
     job_salary = re.sub(r'\(.*?\)', '', job_salary).strip()
 
-    salary_values = re.findall(r'[\d,]+(?:\.\d+)?', job_salary)
+    salary_values = re.findall(r'([^\d\s]*\d[\d,]*(?:\.\d+)?[KMLCrkmlcr]?)', job_salary)
 
     # Determine salary_min and salary_max
-    if len(salary_values) == 2:  
+    if len(salary_values) == 2:
         salary_min, salary_max = salary_values
-    elif len(salary_values) == 1:  
+    elif len(salary_values) == 1:
         salary_min = salary_max = salary_values[0]
     else:
         salary_min = salary_max = None

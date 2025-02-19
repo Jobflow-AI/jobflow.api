@@ -1,12 +1,13 @@
-from function.utils import createFile, scrape_job_link
+from function.utils import createFile, scrape_job_link, extract_salary
 from function.insert_job import insert_job
 
 async def scrape_ycombinator(soup):
     portal = 'ycombinator'
     # Locate all job entries
-    jobs = soup.find_all('div', class_='w-full bg-beige-lighter mb-2 rounded-md p-2 border border-gray-200 flex')
+    job_list = soup.find_all('div', class_='w-full bg-beige-lighter mb-2 rounded-md p-2 border border-gray-200 flex')
 
-    if jobs:
+    if job_list:
+        jobs = job_list
         with open(f"{portal}_jobs.txt", "w", encoding="utf-8") as file:
             for job in jobs:
                 # Extract job title
@@ -36,11 +37,13 @@ async def scrape_ycombinator(soup):
                         company_logo = img_tag['src']
 
                 job_details = await scrape_job_link(job_link, portal)
-                job_salary=None
+                job_salary = None
                 if job_details:
                     job_salary_element = job_details.find('div', class_="company-title")
                     if job_salary_element:
-                        job_salary = job_salary_element.find('div', class_='text-gray-500 my-2').find('span').text.strip()
+                        salary_span = job_salary_element.find('div', class_='text-gray-500 my-2').find('span')
+                        if salary_span:
+                            job_salary = salary_span.text.strip()
 
                 salary_min = None
                 salary_max = None
@@ -83,9 +86,9 @@ async def scrape_ycombinator_jobpage(soup, job_link):
 
         job_title_element = soup.find('div', class_='company-title').find_all('div', class_='text-gray-500')
         if job_title_element:
-            job_salary_text = job_title_element[0].find('span').text.strip()  # Extracting the first div for location
-            job_location_text = job_title_element[2].text.strip()  # Extracting the third div for location
-            job_type_text = job_title_element[3].text.strip()  # Extracting the fourth div for job type
+            job_salary_text = job_title_element[0].find('span').text.strip() if job_title_element[0].find('span') else None  # Extracting the first div for location
+            job_location_text = job_title_element[2].text.strip() if len(job_title_element) > 2 else None  # Extracting the third div for location
+            job_type_text = job_title_element[3].text.strip() if len(job_title_element) > 3 else None  # Extracting the fourth div for job type
         else:
             job_location_text = None
             job_type_text = None

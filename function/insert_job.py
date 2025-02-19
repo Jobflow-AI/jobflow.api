@@ -2,11 +2,12 @@ from datetime import datetime
 from db.prisma import db
 from flask import jsonify
 from prisma.errors import UniqueViolationError
+import hashlib
 
 async def insert_job(job):
     # Ensure database connection
-    if not db.is_connected():
-        await db.connect()
+    # if not db.is_connected():
+    #     await db.connect()
 
     try:
         def to_lowercase(value):
@@ -35,15 +36,33 @@ async def insert_job(job):
         if not company:
             return jsonify({"error": "Failed to create or find company"}), 500
 
+        salary_min = job.get('salary_min')
+        salary_max = job.get('salary_max')
+
+        # Remove commas from salary strings
+        salary_min = salary_min.replace(',', '') if salary_min is not None else None
+        salary_max = salary_max.replace(',', '') if salary_max is not None else None
+
+        # Generate a unique job_id if not provided
+        job_id = job.get('job_id', 'N/A')
+        if job_id == 'N/A':
+            unique_string = f"{job.get('title', '')}-{company_name}-{datetime.utcnow().isoformat()}"
+            job_id = hashlib.md5(unique_string.encode()).hexdigest()
+
+        # # Convert to float
+        # salary_min = float(salary_min) if salary_min is not None else None
+        # salary_max = float(salary_max) if salary_max is not None else None
+
         # 🔹 Create job document
         job_document = {
             "title": to_lowercase(job.get('title', 'N/A')),
+            "job_id": job_id,
             "job_link": job.get('job_link', 'N/A'),
             "job_type": to_lowercase(job.get('job_type', 'N/A')),
             "apply_link": job.get('apply_link'),
             "job_location": to_lowercase(job.get('job_location', 'N/A')),
-            "salary_min": job.get('salary_min'),
-            "salary_max": job.get('salary_max'),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
             "job_salary": job.get('job_salary'),  
             "experience_min": job.get('experience_min'),
             "experience_max": job.get('experience_max'),
@@ -74,6 +93,5 @@ async def insert_job(job):
     except Exception as e:
         print(e, "Error from insert_job function")  # Output the error to the console for debugging
         return {'error': str(e)}, 500
-    
-    finally:
-        await db.disconnect()
+    # finally:
+    #     await db.disconnect()

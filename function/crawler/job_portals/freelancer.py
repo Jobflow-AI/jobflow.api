@@ -1,5 +1,4 @@
-
-from function.utils import createFile, fetch_job_details
+from function.utils import createFile, fetch_job_details, extract_salary
 from function.insert_job import insert_job
 async def scrape_freelancer(soup):
     portal = 'freelancer'
@@ -34,6 +33,7 @@ async def scrape_freelancer(soup):
                     "title": title,
                     "job_link": f"https://www.freelancer.com{job_link}",
                     "job_location": job_location,
+                    "company_name": "Freelancer",
                     "job_salary": job_salary,
                     "salary_min": salary_min,
                     "salary_max": salary_max,
