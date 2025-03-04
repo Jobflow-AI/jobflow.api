@@ -10,7 +10,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model User {
   id            String   @id @default(uuid()) @db.Uuid
   name          String
@@ -23,46 +22,38 @@ model User {
 }
 
 // Jobs tracked by users
-// model Tracked_Jobs {
-//   id       String  @id @default(uuid()) @db.Uuid
-//   status   String  @default("applied")
-
-//   userId   String  @db.Uuid
-//   user     User    @relation(fields: [userId], references: [id])
-
-//   jobId    String  @db.Uuid
-//   job      Job     @relation(fields: [jobId], references: [id]) // Relation to the Job model
-
-//   @@unique([jobId, userId]) // Ensures a user can only apply to a job once
-// }
-
-// Jobs create by user(all )
 model Tracked_Jobs {
   id            String  @id @default(uuid()) @db.Uuid
   title         String
   job_link      String?
   job_type      String?
+  job_id        String? @unique
   apply_link    String?
   job_location  String?
+  salary_min    String?   
+  salary_max    String?
   job_salary    String?  
-  job_description    String? 
-  skills_required    String? 
+  experience_min Int?     
+  experience_max Int?   
+  experience    String? 
+  job_description String? 
+  skills_required String? 
   source        String?
   source_logo   String?
   posted        DateTime? @default(now())
-  status   String  @default("applied")
+  status        String  @default("applied")
 
-  userId   String  @db.Uuid
-  user     User    @relation(fields: [userId], references: [id])
+  userId        String  @db.Uuid
+  user          User    @relation(fields: [userId], references: [id])
 
   companyId     String?   @db.Uuid
   company       Company?  @relation(fields: [companyId], references: [id])
-  @@unique([title, companyId, userId])
+  @@unique([title, companyId, userId], map: "UniqueTrackedJob")
 }
 
 model Company {
   id               String   @id @default(uuid()) @db.Uuid
-  company_name     String
+  company_name     String   @unique(map: "UniqueCompanyName")
   description      String?
   about            Json?
   company_link     String?
@@ -72,26 +63,32 @@ model Company {
   jobs             Job[]
   trackedJobs      Tracked_Jobs[]
 
-  @@unique([company_name]) // Ensures that company names are unique
+  @@unique([company_name], map: "UniqueCompanyNameConstraint") // Ensures that company names are unique
 }
 
 model Job {
   id            String   @id @default(uuid()) @db.Uuid
   title         String
   job_link      String
-  job_type      String
+  job_type      String?
+  job_id        String? @unique
   apply_link    String?
   job_location  String?
+  salary_min    String?   
+  salary_max    String?
   job_salary    String?  
-  job_description    String? 
-  skills_required    String? 
+  experience_min Int?     
+  experience_max Int?   
+  experience    String? 
+  job_description String? 
+  skills_required String? 
   source        String
   source_logo   String?
   posted        DateTime @default(now())
   created_at    DateTime @default(now())
 
   companyId     String   @db.Uuid
-  company       Company  @relation(fields: [companyId], references: [id])
+  company       Company?  @relation(fields: [companyId], references: [id])
 
-  @@unique([title, companyId])  // This creates a unique index on title and companyId
+  @@unique([title, companyId], map: "UniqueJobTitleCompany")  // This creates a unique index on title and companyId
 }

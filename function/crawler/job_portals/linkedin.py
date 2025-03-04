@@ -1,5 +1,7 @@
-from function.utils import createFile, fetch_job_salary
+from function.utils import createFile, fetch_job_details, extract_salary
 from function.insert_job import insert_job
+from function.utils import extract_salary
+
 async def scrape_linkedin(soup):
      portal = 'linkedin'
      job_list = soup.find('ul', class_='jobs-search__results-list')
@@ -11,7 +13,7 @@ async def scrape_linkedin(soup):
                 company_name = job.find('h4', class_='base-search-card__subtitle')
                 job_link = job.find('a', class_='base-card__full-link')
                 job_location = job.find('span', class_='job-search-card__location')
-                job_salary = fetch_job_salary(job_link['href'].strip()) if job_link else None
+                job_salary, experience_level, job_type = fetch_job_details(job_link['href'].strip()) if job_link else None
                 company_logo_element = job.find('div', class_='search-entity-media')
                 company_logo=None
                 if company_logo_element:
@@ -19,7 +21,11 @@ async def scrape_linkedin(soup):
                     if img_tag: 
                         company_logo = img_tag['data-delayed-url']
 
-                print(company_logo, "here is company log")
+                salary_min = None
+                salary_max = None
+
+                if job_salary:
+                    salary_min, salary_max = extract_salary(job_salary)  
 
                 if title and company_name and job_link and job_location:
                     job_info = {
@@ -29,13 +35,15 @@ async def scrape_linkedin(soup):
                         "job_link": job_link['href'].strip(),
                         "job_location": job_location.text.strip(),
                         "job_salary": job_salary,
+                        "salary_min": salary_min,
+                        "salary_max": salary_max,
+                        "experience_level": experience_level,
+                        "job_type": job_type,
                         "source": portal,
                     }
-                    # job_data.append(job_info)
                     try:
-                        print("Inserting job data:", job_info)  # Debugging log
                         await insert_job(job_info)
-                        print("Insert successful for:", job_info["title"])
+                        createFile(file, title.text.strip(), company_name.text.strip(), job_link['href'].strip(), job_location.text.strip(), None, None, experience_level, job_salary, portal, job_type)
                     except Exception as e:
                         print(f"Error inserting job for {job_info.get('title', 'unknown')}: {e}")
                     
