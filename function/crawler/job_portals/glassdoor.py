@@ -1,5 +1,6 @@
 from function.utils import createFile, fetch_job_details, extract_salary
 from function.insert_job import insert_job
+from function.utils import extract_salary
 
 async def scrape_glassdoor(soup):
     portal = 'glassdoor'

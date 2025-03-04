@@ -1,5 +1,7 @@
 from function.utils import createFile, scrape_job_link, extract_salary
 from function.insert_job import insert_job
+from function.utils import extract_salary
+
 
 async def scrape_ycombinator(soup):
     portal = 'ycombinator'
@@ -28,7 +30,9 @@ async def scrape_ycombinator(soup):
                 else:
                     job_location = "Not specified"
                 
-                company_name = job.find('div', class_='company-details').find('span')
+                company_name_tag = job.find('div', class_='company-details').find('span')
+                company_name = company_name_tag.text.strip() if company_name_tag else None
+
                 company_logo_element = job.find('div', class_='company-logo')
                 company_logo = None
                 if company_logo_element:
@@ -56,7 +60,7 @@ async def scrape_ycombinator(soup):
                     "title": title,
                     "job_link": job_link,
                     "job_location": job_location,
-                    "company_name": company_name.text.strip() if company_name else None,
+                    "company_name": company_name,
                     "company_logo": company_logo,
                     "job_salary": job_salary,
                     "salary_min": salary_min,
@@ -66,7 +70,7 @@ async def scrape_ycombinator(soup):
 
                 # Insert the job info into the database
                 await insert_job(job_info)
-                createFile(file, title, company_name.text.strip() if company_name else None, job_link, job_location, None, None, job_salary, source=portal)
+                createFile(file, title, company_name, job_link, job_location, None, None, job_salary, source=portal)
 
 async def scrape_ycombinator_jobpage(soup, job_link):
     portal = 'ycombinator'
