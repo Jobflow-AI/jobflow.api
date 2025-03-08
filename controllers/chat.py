@@ -32,10 +32,7 @@ MOCK_RESPONSE = """
 
 @chat_blueprint.route('/', methods=['POST'])
 async def search_jobs():
-    try:
-        if not db.is_connected():
-            await db.connect()
-            
+    try:    
         # Get the user's query from the request
         data = request.get_json()
         if not data or 'question' not in data:
@@ -291,9 +288,6 @@ async def search_jobs():
         print(f"Error in search_jobs: {str(e)}")
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
 
 # Add a test endpoint to verify the mock data parsing
 @chat_blueprint.route('/test', methods=['GET'])

@@ -10,9 +10,7 @@ user_blueprint = Blueprint('user', __name__)
 @user_blueprint.route('/get', methods=['GET'])
 async def get_user():
    
-    try:
-        await db.connect()
-    
+    try:    
         currentUser = g.user
 
         user = await db.user.find_unique(where={"id": currentUser.id})
@@ -26,18 +24,11 @@ async def get_user():
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
-    
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
 
 
 @user_blueprint.route('/update', methods=['PUT'])
 async def update_user():
     try:
-        # Connect to the database
-        await db.connect()
-
         currentUser = g.user
 
         # Fetch the current user from the database
@@ -91,16 +82,10 @@ async def update_user():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
 
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
-
 
 @user_blueprint.route('/jobs/get', methods=['GET'])
 async def get_user_jobs():
     try:
-        await db.connect()
-
         # Get user ID from the request context
         userId = g.user.id
         user = await db.user.find_unique(where={"id": userId})
@@ -126,18 +111,11 @@ async def get_user_jobs():
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-    finally:
-        print("Disconnecting from the database...")
-        await db.disconnect()
-        print("Disconnected from the database.")
-
 
 
 @user_blueprint.route('/job/track', methods=['POST'])
 async def track_job():
     try:
-        await db.connect()
-
         # Find the job by its ID
         jobId = request.args.get('jobId', default=None, type=str)
         if not jobId:
@@ -186,9 +164,6 @@ async def track_job():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({"success": False, "error": str(e)}), 500
 
-    finally:
-        await db.disconnect()
-
 
 
 @user_blueprint.route('/job/update/status', methods=['PUT'])
@@ -224,9 +199,6 @@ async def update_job_status():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({"success": False, "error": str(e)}), 500
 
-    finally:
-        await db.disconnect()
-
 
 @user_blueprint.route('/job/bookmark', methods=['POST'])
 async def bookmark_job():
@@ -260,7 +232,6 @@ async def bookmark_job():
 @user_blueprint.route('/job/create', methods=['POST'])
 async def create_job():
     try:
-        await db.connect()
         body_data = request.get_json()
         print(body_data, "here is the body data")
 
@@ -332,8 +303,5 @@ async def create_job():
     except Exception as e:
         print(e, "here is the error")
         return jsonify({"success": False, "error": str(e)}), 500
-
-    finally:
-        await db.disconnect()
 
 

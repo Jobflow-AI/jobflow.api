@@ -8,7 +8,6 @@ auth_blueprint = Blueprint('auth', __name__)
 
 @auth_blueprint.route('/register', methods=['POST'])
 async def create_user():
-    await db.connect()
     print(db.is_connected(), "is db conected")
     data = request.get_json()
     
@@ -40,13 +39,9 @@ async def create_user():
     except Exception as e:
         print(e, "here is erorr")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
-    finally: 
-        await db.disconnect()
 
 @auth_blueprint.route('/google', methods=['POST'])
-async def google_auth():
-    await db.connect()
-    
+async def google_auth():    
     data = request.get_json()
 
     access_token = data.get('access_token')
@@ -84,5 +79,3 @@ async def google_auth():
     except Exception as e:
         print(e, "here is error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
-    finally: 
-        await db.disconnect()

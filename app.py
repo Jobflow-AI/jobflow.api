@@ -4,7 +4,15 @@ from controllers.job import job_blueprint
 from controllers.user import user_blueprint
 from controllers.chat import chat_blueprint
 from flask_cors import CORS
+from prisma import Prisma, register
 from middleware import protect_routes  
+from db.prisma import db
+import asyncio
+
+# Create an event loop and connect to the database
+loop = asyncio.get_event_loop()
+loop.run_until_complete(db.connect())
+register(db)
 
 app = Flask(__name__)
 

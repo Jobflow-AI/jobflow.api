@@ -48,9 +48,6 @@ async def create_jobs():
 @job_blueprint.route('/get', methods=['GET'])
 async def get_job():   
     try:
-        if not db.is_connected():
-            await db.connect()
-
         page = request.args.get('page', default=1, type=int)
         source = request.args.get('portal', default=None, type=str)
         title = request.args.get('title', default=None, type=str)
@@ -83,17 +80,12 @@ async def get_job():
     except Exception as e:
         print(e, "here is the error inside get")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
-    
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
+
 
 
 @job_blueprint.route('/get/id', methods=['GET'])
 async def getJobId():   
     try:
-        if not db.is_connected():
-            await db.connect()
 
         jobId = request.args.get('jobId', default=1, type=int)
 
@@ -111,15 +103,10 @@ async def getJobId():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
 
 @job_blueprint.route('/get/company/list', methods=['GET'])
 async def get_companies_list():   
     try:
-        if not db.is_connected():
-            await db.connect()
 
         # Fetch jobs from the database including the company relation
         companies = await db.company.find_many()
@@ -130,10 +117,6 @@ async def get_companies_list():
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
-    
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
 
 
 @job_blueprint.route('/scrape', methods=['GET'])
