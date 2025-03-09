@@ -86,3 +86,37 @@ async def google_auth():
         return jsonify({'error': str(e)}), 500
     finally: 
         await db.disconnect()
+
+# Add the login route
+@auth_blueprint.route('/login', methods=['POST'])
+async def login_user():
+    await db.connect()
+    print(db.is_connected(), "is db conected")
+    data = request.get_json()
+
+    # Validate input
+    if 'email' not in data or 'password' not in data:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    email = data['email']
+    password = data['password']
+
+    try:
+        # Find the user by email
+        user = await db.user.find_unique(where={"email": email})
+        if not user:
+            return jsonify({'error': 'Invalid email or password'}), 401
+
+        # Check if the password matches
+        if not bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+            return jsonify({'error': 'Invalid email or password'}), 401
+
+        # Call setCookie to generate the response
+        response = await setCookie(user)
+        return response
+
+    except Exception as e:
+        print(e, "here is error")  # Output the error to the console for debugging
+        return jsonify({'error': str(e)}), 500
+    finally:
+        await db.disconnect()
