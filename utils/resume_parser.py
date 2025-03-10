@@ -45,6 +45,31 @@ def extract_text(file_path, extension):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Function to generate detailed summary from resume text
+def generate_detailed_summary(resume_text):
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    prompt = f"""
+    Analyze the following resume in detail and write a comprehensive professional summary.
+    The summary should:
+    1. Highlight key qualifications, skills, and expertise
+    2. Summarize professional experience and achievements
+    3. Mention educational background and relevant certifications
+    4. Identify core competencies and technical skills
+    5. Be written in a professional third-person style
+    6. Be between 200-300 words
+    
+    Resume:
+    {resume_text}
+    """
+    
+    try:
+        response = model.generate_content(prompt)
+        detailed_summary = response.text.strip()
+        return detailed_summary
+    except Exception as e:
+        print(f"Error generating detailed summary: {str(e)}")
+        return "Unable to generate detailed summary."
+
 # Function to process text with Gemini API
 def parse_resume(resume_text):
     print(resume_text)
@@ -62,7 +87,6 @@ def parse_resume(resume_text):
         "location": "string",
         "links": [{{ "type": "string", "url": "string" }}]
       }},
-      "summary": "string",
       "experience": [
         {{
           "title": "string",
@@ -110,6 +134,10 @@ def parse_resume(resume_text):
         else:
             # If no JSON found, try to parse the whole response
             parsed_data = json.loads(response_text)
+        
+        # Generate a detailed summary and add it to the parsed data
+        detailed_summary = generate_detailed_summary(resume_text)
+        parsed_data["summary"] = detailed_summary
             
         print("Parsed resume data:", parsed_data)
         return parsed_data
@@ -117,10 +145,13 @@ def parse_resume(resume_text):
         print(f"Error parsing JSON: {e}")
         print(f"Response text: {response_text}")
         
+        # Generate a detailed summary even if parsing fails
+        detailed_summary = generate_detailed_summary(resume_text)
+        
         # Return a basic structure if parsing fails
         return {
             "personalInfo": {"name": "", "email": "", "phone": "", "location": "", "links": []},
-            "summary": "",
+            "summary": detailed_summary,
             "experience": [],
             "education": [],
             "skills": [],

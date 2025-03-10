@@ -68,18 +68,25 @@ async def google_auth():
     
     try:
         user = await db.user.find_unique(where={"email": email})
+        is_new_user = False
+        
         if not user:
-        # Create a new user with async Prisma
+            # Create a new user with async Prisma
             user = await db.user.create(
                 data={
                     'email': email,
                     'name': name,
                 }
             )
+            is_new_user = True
 
         # Call setCookie to generate the response
         response = await setCookie(user)
-        return response
+        
+        # Add newUser flag to the response
+        response_data = response.get_json()
+        response_data['newUser'] = is_new_user
+        return jsonify(response_data), response.status_code
     
     except Exception as e:
         print(e, "here is error")  # Output the error to the console for debugging

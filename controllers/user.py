@@ -393,7 +393,6 @@ async def save_resume_data():
         
         # Get the resume data from the request body
         resume_data = request.get_json()
-        print(resume_data, "here is the resume data")
         
         if not resume_data:
             return jsonify({"success": False, "error": "No resume data provided"}), 400
