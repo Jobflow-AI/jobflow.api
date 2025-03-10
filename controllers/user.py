@@ -398,17 +398,12 @@ async def save_resume_data():
         if not resume_data:
             return jsonify({"success": False, "error": "No resume data provided"}), 400
             
+        # Convert the resume data to a JSON string
+        resume_json_str = json.dumps(resume_data)
+        
         # Prepare the data for updating the user
         update_data = {
-            "resume": resume_data,  # Store the entire resume JSON
-            "resume_summary": resume_data.get("summary", ""),
-            "resume_skills": resume_data.get("skills", []),
-            "resume_experience": resume_data.get("experience", []),
-            "resume_education": resume_data.get("education", []),
-            "resume_projects": resume_data.get("projects", []),
-            "resume_links": resume_data.get("personalInfo", {}).get("links", []),
-            "resume_location": resume_data.get("personalInfo", {}).get("location", ""),
-            "resume_phone": resume_data.get("personalInfo", {}).get("phone", "")
+            "resume": resume_json_str  # Store the resume as a JSON string
         }
         
         # Update the user with the resume data

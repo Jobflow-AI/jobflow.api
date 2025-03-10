@@ -22,14 +22,6 @@ model User {
   
   // Resume information
   resume        Json?    // Stores the entire parsed resume
-  resume_summary String?
-  resume_skills String[]
-  resume_experience Json?
-  resume_education Json?
-  resume_projects Json?
-  resume_links   Json?
-  resume_location String?
-  resume_phone   String?
 }
 
 // Jobs tracked by users
