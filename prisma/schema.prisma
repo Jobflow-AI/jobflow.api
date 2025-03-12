@@ -59,6 +59,7 @@ model Company {
   company_link     String?
   company_logo     String?
   socials          Json?    // JSON field to store all social media links
+  last_job_ids     Json?    // Added this for storing job Ids
 
   jobs             Job[]
   trackedJobs      Tracked_Jobs[]
@@ -86,7 +87,7 @@ model Job {
   source_logo   String?
   posted        DateTime @default(now())
   created_at    DateTime @default(now())
-
+  end_date      DateTime?
   companyId     String   @db.Uuid
   company       Company?  @relation(fields: [companyId], references: [id])
 

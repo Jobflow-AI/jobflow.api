@@ -1,5 +1,5 @@
 import asyncio
-from function.crawler.crawler import scrapejobsdata
+from function.crawler.crawler import scrapejobsdata, scrape_workday_jobs
 
 searchKeywords = [
     "software developer",
@@ -25,6 +25,7 @@ searchKeywords = [
 ]
 
 async def run_crawler():
+    await scrape_workday_jobs()
     for keyword in searchKeywords:
         await scrapejobsdata(keyword)
 

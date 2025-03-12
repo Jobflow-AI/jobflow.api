@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Job" ALTER COLUMN "end_date" DROP NOT NULL,
+ALTER COLUMN "end_date" DROP DEFAULT;

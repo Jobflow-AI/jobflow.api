@@ -11,7 +11,8 @@ from function.crawler.job_portals import (
     scrape_upwork,  # working
     scrape_freelancer, # working
     scrape_foundit,     # Proxy issue
-    scrape_naukri   # working
+    scrape_naukri,   # working
+    scrape_workday   # New addition
 )
 import os
 import urllib.parse
@@ -23,6 +24,9 @@ scraperapi_key = os.getenv('SCRAPER_API')
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
 }
+
+async def scrape_workday_jobs():
+    await scrape_workday()
 
 async def scrapejobsdata(searchKeyword):
     searchKeyword = urllib.parse.quote(searchKeyword)  # Encodes spaces as %20

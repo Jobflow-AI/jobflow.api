@@ -53,6 +53,24 @@ async def insert_job(job):
         # salary_min = float(salary_min) if salary_min is not None else None
         # salary_max = float(salary_max) if salary_max is not None else None
 
+        posted_str = job.get("posted")
+        if posted_str:
+            try:
+                posted_date = datetime.strptime(posted_str, "%Y-%m-%d")
+            except ValueError:
+                posted_date = datetime.utcnow()
+        else:
+            posted_date = datetime.utcnow()
+
+        end_date_str = job.get("end_date")
+        if end_date_str:
+            try:
+                end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+            except ValueError:
+                end_date = None
+        else:
+            end_date = None
+
         # 🔹 Create job document
         job_document = {
             "title": to_lowercase(job.get('title', 'N/A')),
@@ -71,8 +89,8 @@ async def insert_job(job):
             "skills_required": ", ".join(job.get('skills_required', [])) if isinstance(job.get('skills_required'), list) else job.get('skills_required', 'N/A'),
             "source": to_lowercase(job.get('source', 'N/A')),
             "source_logo": job.get('source_logo'),
-            "posted": job.get('posted', datetime.utcnow()),
-            "created_at": datetime.utcnow(),
+            "posted": posted_date,
+            "end_date": end_date,
             "companyId": company.id  # ✅ Ensure this is assigned correctly
         }
         # print(job_document,"\n\n")
