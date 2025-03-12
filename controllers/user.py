@@ -1,9 +1,12 @@
 from db.prisma import db
 from flask import jsonify, request, Blueprint, g
-from utils import serialize_job
+from utils import serialize_job, extract_text, allowed_file, parse_resume
 from function.insert_job import insert_job
 from datetime import datetime
 import json
+import tempfile
+import os
+import fitz
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -73,7 +76,6 @@ async def update_user():
             # Convert to JSON string for the database
             update_data['job_statuses'] = json.dumps(valid_job_statuses)
 
-        print(update_data, "here is update_data")
 
         # If there are fields to update, perform the update
         if update_data:
@@ -337,3 +339,88 @@ async def create_job():
         await db.disconnect()
 
 
+@user_blueprint.route('/resume/upload', methods=['POST'])
+def upload_resume():
+    if 'resume' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    
+    file = request.files['resume']
+    if file.filename == '' or not allowed_file(file.filename):
+        return jsonify({'error': 'Invalid file type. Only PDF and DOCX are supported.'}), 400
+
+    temp_dir = tempfile.mkdtemp()
+    try:
+        extension = file.filename.rsplit('.', 1)[1].lower()
+        temp_path = os.path.join(temp_dir, file.filename)
+        file.save(temp_path)
+        
+        # Verify file is valid
+        if extension == 'pdf':
+            try:
+                # Try to open with PyMuPDF first to validate
+                doc = fitz.open(temp_path)
+                doc.close()
+            except Exception as e:
+                return jsonify({'error': f'Invalid or corrupted PDF file: {str(e)}'}), 400
+        
+        text = extract_text(temp_path, extension)
+        if not text:
+            return jsonify({'error': 'Could not extract text from the file. The file may be empty, password-protected, or corrupted.'}), 400
+            
+        parsed_data = parse_resume(text)
+        print(parsed_data, "here is the parsed data")
+        return jsonify({"success": True, "parsed_data": parsed_data}), 200
+
+    except Exception as e:
+        print(f"Resume upload error: {str(e)}")  # Better error logging
+        return jsonify({'error': str(e)}), 500
+    finally:
+        # Cleanup
+        if os.path.exists(temp_dir):
+            for root, dirs, files in os.walk(temp_dir, topdown=False):
+                for name in files:
+                    os.remove(os.path.join(root, name))
+                os.rmdir(root)
+
+
+@user_blueprint.route('/info/update', methods=['POST'])
+async def save_resume_data():
+    try:
+        await db.connect()
+        
+        # Get the current user from the request context
+        currentUser = g.user
+        
+        # Get the resume data from the request body
+        resume_data = request.get_json()
+        
+        if not resume_data:
+            return jsonify({"success": False, "error": "No resume data provided"}), 400
+            
+        # Convert the resume data to a JSON string
+        resume_json_str = json.dumps(resume_data)
+        
+        # Prepare the data for updating the user
+        update_data = {
+            "resume": resume_json_str  # Store the resume as a JSON string
+        }
+        
+        # Update the user with the resume data
+        updated_user = await db.user.update(
+            where={"id": currentUser.id},
+            data=update_data
+        )
+        
+        # Return success response
+        return jsonify({
+            "success": True, 
+            "message": "Resume data saved successfully",
+            "user": updated_user.model_dump()
+        }), 200
+        
+    except Exception as e:
+        print(f"Error saving resume data: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+        
+    finally:
+        await db.disconnect()

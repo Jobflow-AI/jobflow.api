@@ -30,8 +30,10 @@ MOCK_RESPONSE = """
 }
 """
 
-@chat_blueprint.route('/', methods=['POST'])
+# Change the route to match what the frontend is calling
+@chat_blueprint.route('', methods=['POST'])
 async def search_jobs():
+        
     try:
         if not db.is_connected():
             await db.connect()
