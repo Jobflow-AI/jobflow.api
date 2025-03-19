@@ -1,5 +1,5 @@
 from db.prisma import db
-from flask import jsonify, request, Blueprint, g
+from flask import jsonify, request, Blueprint, g, send_file
 from utils import serialize_job, extract_text, allowed_file, parse_resume
 from function.insert_job import insert_job
 from datetime import datetime
@@ -7,6 +7,11 @@ import json
 import tempfile
 import os
 import fitz
+import google.generativeai as genai
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -424,3 +429,270 @@ async def save_resume_data():
         
     finally:
         await db.disconnect()
+
+
+@user_blueprint.route('/resume/generate', methods=['POST'])
+async def generate_custom_resume():
+    try:
+        await db.connect()
+        
+        # Get job ID from request
+        job_id = request.args.get('jobId')
+        if not job_id:
+            return jsonify({"success": False, "error": "Job ID is required"}), 400
+            
+        # Get current user
+        current_user = g.user
+        
+        # Get user's resume data
+        user = await db.user.find_unique(where={"id": current_user.id})
+        if not user or not user.resume:
+            return jsonify({"success": False, "error": "User resume not found"}), 404
+            
+        # Get job data
+        job = await db.job.find_unique(
+            where={"id": job_id},
+            include={"company": True}
+        )
+        
+        if not job:
+            # Try to find in tracked jobs
+            tracked_job = await db.tracked_jobs.find_unique(
+                where={"id": job_id},
+                include={"company": True}
+            )
+            if not tracked_job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            job = tracked_job
+        
+        # Parse resume data
+        resume_data = json.loads(user.resume)
+        
+        # Prepare job data for the AI
+        job_data = {
+            "title": job.title,
+            "company": job.company.company_name if job.company else "Unknown",
+            "description": job.job_description or "",
+            "skills_required": job.skills_required or "",
+            "job_type": job.job_type or "",
+            "experience": job.experience or ""
+        }
+        
+        # Generate tailored resume using Gemini API
+        tailored_resume = await generate_tailored_resume(resume_data, job_data)
+        
+        # Create PDF from tailored resume
+        pdf_path = create_resume_pdf(tailored_resume, job_data["company"])
+        
+        # Return the PDF file
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=f"Resume_for_{job_data['company']}_{job_data['title']}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"Error generating resume: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+        
+    finally:
+        await db.disconnect()
+        # Clean up temporary files if needed
+        if 'pdf_path' in locals() and os.path.exists(pdf_path):
+            os.remove(pdf_path)
+
+async def generate_tailored_resume(resume_data, job_data):
+    """Generate a tailored resume using Gemini API"""
+    # Configure Gemini API
+    gemini_key = os.getenv('GEMINI_KEY')
+    genai.configure(api_key="AIzaSyAz8kbeNRYnksgdQuurQ4gumQWX7j1634w")
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    
+    # Create prompt for Gemini
+    prompt = f"""
+    I need to tailor a resume for a specific job application.
+    
+    JOB DETAILS:
+    Title: {job_data['title']}
+    Company: {job_data['company']}
+    Description: {job_data['description']}
+    Required Skills: {job_data['skills_required']}
+    Job Type: {job_data['job_type']}
+    Experience Required: {job_data['experience']}
+    
+    MY CURRENT RESUME:
+    {json.dumps(resume_data, indent=2)}
+    
+    Please create a tailored resume that:
+    1. Highlights skills and experiences most relevant to this job
+    2. Uses keywords from the job description
+    3. Quantifies achievements where possible
+    4. Prioritizes experiences that match the job requirements
+    5. Maintains honesty while presenting my background in the best light
+    
+    Return the result as a structured JSON with these sections:
+    {{
+      "summary": "A tailored professional summary",
+      "skills": ["Relevant skill 1", "Relevant skill 2", ...],
+      "experience": [
+        {{
+          "title": "Job Title",
+          "company": "Company Name",
+          "dates": "Start - End",
+          "highlights": ["Achievement 1", "Achievement 2", ...]
+        }}
+      ],
+      "education": [
+        {{
+          "degree": "Degree Name",
+          "institution": "Institution Name",
+          "dates": "Start - End"
+        }}
+      ],
+      "projects": [
+        {{
+          "name": "Project Name",
+          "description": "Brief description",
+          "technologies": ["Tech 1", "Tech 2", ...]
+        }}
+      ]
+    }}
+    """
+    
+    # Generate content
+    response = await model.generate_content_async(prompt)
+    
+    # Parse the response
+    try:
+        response_text = response.text
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_str = response_text[json_start:json_end]
+            tailored_resume = json.loads(json_str)
+        else:
+            tailored_resume = json.loads(response_text)
+            
+        return tailored_resume
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        print(f"Response text: {response_text}")
+        # Return a basic structure if parsing fails
+        return {
+            "summary": "Could not generate a tailored summary.",
+            "skills": [],
+            "experience": [],
+            "education": [],
+            "projects": []
+        }
+
+def create_resume_pdf(resume_data, company_name):
+    """Create a PDF resume from the tailored resume data"""
+    # Create a temporary file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+    temp_file.close()
+    
+    # Create the PDF document
+    doc = SimpleDocTemplate(temp_file.name, pagesize=letter)
+    styles = getSampleStyleSheet()
+    
+    # Create custom styles
+    styles.add(ParagraphStyle(name='Heading1', 
+                             fontName='Helvetica-Bold',
+                             fontSize=16, 
+                             spaceAfter=12))
+    styles.add(ParagraphStyle(name='Heading2', 
+                             fontName='Helvetica-Bold',
+                             fontSize=14, 
+                             spaceAfter=8))
+    styles.add(ParagraphStyle(name='Normal', 
+                             fontName='Helvetica',
+                             fontSize=12, 
+                             spaceAfter=6))
+    
+    # Build the document content
+    content = []
+    
+    # Add name and contact info (using personal info from original resume)
+    if 'personalInfo' in resume_data:
+        name = resume_data.get('personalInfo', {}).get('name', 'Candidate')
+        content.append(Paragraph(name, styles['Heading1']))
+        
+        # Contact info
+        contact_info = []
+        if 'email' in resume_data.get('personalInfo', {}):
+            contact_info.append(resume_data['personalInfo']['email'])
+        if 'phone' in resume_data.get('personalInfo', {}):
+            contact_info.append(resume_data['personalInfo']['phone'])
+        if 'location' in resume_data.get('personalInfo', {}):
+            contact_info.append(resume_data['personalInfo']['location'])
+            
+        content.append(Paragraph(" | ".join(contact_info), styles['Normal']))
+        content.append(Spacer(1, 12))
+    
+    # Add summary
+    if 'summary' in resume_data:
+        content.append(Paragraph("PROFESSIONAL SUMMARY", styles['Heading2']))
+        content.append(Paragraph(resume_data['summary'], styles['Normal']))
+        content.append(Spacer(1, 12))
+    
+    # Add skills
+    if 'skills' in resume_data and resume_data['skills']:
+        content.append(Paragraph("SKILLS", styles['Heading2']))
+        skills_text = ", ".join(resume_data['skills'])
+        content.append(Paragraph(skills_text, styles['Normal']))
+        content.append(Spacer(1, 12))
+    
+    # Add experience
+    if 'experience' in resume_data and resume_data['experience']:
+        content.append(Paragraph("PROFESSIONAL EXPERIENCE", styles['Heading2']))
+        
+        for exp in resume_data['experience']:
+            job_title = exp.get('title', '')
+            company = exp.get('company', '')
+            dates = exp.get('dates', '')
+            
+            content.append(Paragraph(f"<b>{job_title}</b> - {company} ({dates})", styles['Normal']))
+            
+            if 'highlights' in exp and exp['highlights']:
+                for highlight in exp['highlights']:
+                    content.append(Paragraph(f"• {highlight}", styles['Normal']))
+                    
+            content.append(Spacer(1, 8))
+    
+    # Add education
+    if 'education' in resume_data and resume_data['education']:
+        content.append(Paragraph("EDUCATION", styles['Heading2']))
+        
+        for edu in resume_data['education']:
+            degree = edu.get('degree', '')
+            institution = edu.get('institution', '')
+            dates = edu.get('dates', '')
+            
+            content.append(Paragraph(f"<b>{degree}</b> - {institution} ({dates})", styles['Normal']))
+            content.append(Spacer(1, 6))
+    
+    # Add projects if available
+    if 'projects' in resume_data and resume_data['projects']:
+        content.append(Paragraph("RELEVANT PROJECTS", styles['Heading2']))
+        
+        for project in resume_data['projects']:
+            name = project.get('name', '')
+            description = project.get('description', '')
+            technologies = project.get('technologies', [])
+            
+            content.append(Paragraph(f"<b>{name}</b>", styles['Normal']))
+            content.append(Paragraph(description, styles['Normal']))
+            
+            if technologies:
+                tech_text = f"<i>Technologies:</i> {', '.join(technologies)}"
+                content.append(Paragraph(tech_text, styles['Normal']))
+                
+            content.append(Spacer(1, 8))
+    
+    # Build the PDF
+    doc.build(content)
+    
+    return temp_file.name

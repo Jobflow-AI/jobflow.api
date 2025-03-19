@@ -158,3 +158,89 @@ def parse_resume(resume_text):
             "projects": []
         }
 
+# Add this after your existing functions
+
+async def tailor_resume_for_job(resume_data, job_data):
+    """
+    Tailors a resume for a specific job using Gemini API
+    
+    Args:
+        resume_data (dict): The user's resume data
+        job_data (dict): The job details
+        
+    Returns:
+        dict: Tailored resume data
+    """
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    
+    # Create a detailed prompt for the AI
+    prompt = f"""
+    I need to tailor this resume for a specific job application.
+    
+    JOB DETAILS:
+    Title: {job_data['title']}
+    Company: {job_data['company']}
+    Description: {job_data['description']}
+    Required Skills: {job_data['skills_required']}
+    
+    CURRENT RESUME:
+    {json.dumps(resume_data, indent=2)}
+    
+    Please create a tailored resume that highlights the most relevant skills and experiences for this job.
+    Focus on matching keywords from the job description and emphasizing relevant achievements.
+    
+    Return the result as a structured JSON with these sections:
+    {{
+      "personalInfo": {{
+        "name": "string",
+        "email": "string",
+        "phone": "string",
+        "location": "string"
+      }},
+      "summary": "A tailored professional summary",
+      "skills": ["Relevant skill 1", "Relevant skill 2", ...],
+      "experience": [
+        {{
+          "title": "Job Title",
+          "company": "Company Name",
+          "dates": "Start - End",
+          "highlights": ["Achievement 1", "Achievement 2", ...]
+        }}
+      ],
+      "education": [
+        {{
+          "degree": "Degree Name",
+          "institution": "Institution Name",
+          "dates": "Start - End"
+        }}
+      ],
+      "projects": [
+        {{
+          "name": "Project Name",
+          "description": "Brief description",
+          "technologies": ["Tech 1", "Tech 2", ...]
+        }}
+      ]
+    }}
+    """
+    
+    try:
+        response = await model.generate_content_async(prompt)
+        response_text = response.text
+        
+        # Extract JSON from response
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_str = response_text[json_start:json_end]
+            tailored_resume = json.loads(json_str)
+        else:
+            tailored_resume = json.loads(response_text)
+            
+        return tailored_resume
+    except Exception as e:
+        print(f"Error tailoring resume: {str(e)}")
+        # Return original resume data if tailoring fails
+        return resume_data
+
