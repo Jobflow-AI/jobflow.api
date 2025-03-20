@@ -1,5 +1,5 @@
 from db.prisma import db
-from flask import jsonify, request, Blueprint, g
+from flask import jsonify, request, Blueprint, g, send_file
 from utils import serialize_job, extract_text, allowed_file, parse_resume
 from function.insert_job import insert_job
 from datetime import datetime
@@ -7,6 +7,11 @@ import json
 import tempfile
 import os
 import fitz
+import google.generativeai as genai
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -424,3 +429,337 @@ async def save_resume_data():
         
     finally:
         await db.disconnect()
+
+
+@user_blueprint.route('/resume/generate', methods=['POST'])
+async def generate_custom_resume():
+    try:
+        await db.connect()
+        
+        # Get job ID from request and clean it
+        job_id = request.args.get('jobId', '').strip('"')  # Remove any quotes
+        if not job_id:
+            return jsonify({"success": False, "error": "Job ID is required"}), 400
+            
+        # Get current user
+        current_user = g.user
+        print(current_user, "here is the curren user")
+        
+        # Get user's resume data
+        user = await db.user.find_unique(where={"id": current_user.id})
+        if not user or not user.resume:
+            return jsonify({"success": False, "error": "User resume not found"}), 404
+            
+        # Get job data
+        job = await db.job.find_unique(
+            where={"id": job_id},
+            include={"company": True}
+        )
+        
+        if not job:
+            # Try to find in tracked jobs
+            tracked_job = await db.tracked_jobs.find_unique(
+                where={"id": job_id},
+                include={"company": True}
+            )
+            if not tracked_job:
+                return jsonify({"success": False, "error": "Job not found"}), 404
+            job = tracked_job
+        
+        # Parse resume data
+        resume_data = user.resume
+        print(resume_data, "here is the resume data")
+        
+        # Prepare job data for the AI
+        job_data = {
+            "title": job.title,
+            "company": job.company.company_name if job.company else "Unknown",
+            "description": job.job_description or "",
+            "skills_required": job.skills_required or "",
+            "job_type": job.job_type or "",
+            "experience": job.experience or ""
+        }
+        
+        print(job_data, "here is the job data")
+        # Generate tailored resume using Gemini API
+        tailored_resume = await generate_tailored_resume(resume_data, job_data)
+        
+        # Create PDF from tailored resume
+        pdf_path = create_resume_pdf(tailored_resume, job_data["company"])
+        
+        # Return the PDF file
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=f"Resume_for_{job_data['company']}_{job_data['title']}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"Error generating resume: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 500
+        
+    finally:
+        await db.disconnect()
+        # Clean up temporary files if needed
+        if 'pdf_path' in locals() and os.path.exists(pdf_path):
+            os.remove(pdf_path)
+
+async def generate_tailored_resume(resume_data, job_data):
+    """Generate a tailored resume using Gemini API"""
+    # Configure Gemini API
+    gemini_key = os.getenv('GOOGLE_API_KEY')
+    genai.configure(api_key=gemini_key)
+    model = genai.GenerativeModel("gemini-2.0-flash")
+    
+    # Convert resume_data to a formatted string representation
+    resume_str = json.dumps(resume_data, indent=2)
+    
+    # Create prompt for Gemini
+    prompt = f"""
+    I need to tailor a resume for a specific job application.
+    
+    JOB DETAILS:
+    Title: {job_data['title']}
+    Company: {job_data['company']}
+    Description: {job_data['description']}
+    Required Skills: {job_data['skills_required']}
+    Job Type: {job_data['job_type']}
+    Experience Required: {job_data['experience']}
+    
+    MY CURRENT RESUME:
+    {resume_str}
+    
+    Please create a tailored resume that:
+    1. Highlights skills and experiences most relevant to this job
+    2. Uses keywords from the job description
+    3. Quantifies achievements where possible
+    4. Prioritizes experiences that match the job requirements
+    5. Maintains honesty while presenting my background in the best light
+    
+    Return the result as a structured JSON with these sections:
+    {{
+      "summary": "A tailored professional summary",
+      "skills": ["Relevant skill 1", "Relevant skill 2", ...],
+      "experience": [
+        {{
+          "title": "Job Title",
+          "company": "Company Name",
+          "dates": "Start - End",
+          "highlights": ["Achievement 1", "Achievement 2", ...]
+        }}
+      ],
+      "education": [
+        {{
+          "degree": "Degree Name",
+          "institution": "Institution Name",
+          "dates": "Start - End"
+        }}
+      ],
+      "projects": [
+        {{
+          "name": "Project Name",
+          "description": "Brief description",
+          "technologies": ["Tech 1", "Tech 2", ...]
+        }}
+      ]
+    }}
+    """
+    
+    # Generate content
+    response = await model.generate_content_async(prompt)
+    
+    # Parse the response
+    try:
+        response_text = response.text
+        json_start = response_text.find('{')
+        json_end = response_text.rfind('}') + 1
+        
+        if json_start >= 0 and json_end > json_start:
+            json_str = response_text[json_start:json_end]
+            tailored_resume = json.loads(json_str)
+        else:
+            tailored_resume = json.loads(response_text)
+            
+        print(tailored_resume, "here is the tailored resume")    
+        return tailored_resume
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON: {e}")
+        print(f"Response text: {response_text}")
+        # Return a basic structure if parsing fails
+        return {
+            "summary": "Could not generate a tailored summary.",
+            "skills": [],
+            "experience": [],
+            "education": [],
+            "projects": []
+        }
+
+def create_resume_pdf(resume_data, company_name):
+    """Create a PDF resume from the tailored resume data using HTML template"""
+    try:
+        from xhtml2pdf import pisa
+        from jinja2 import Template
+    except ImportError:
+        return create_resume_pdf_fallback(resume_data, company_name)
+    
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+    temp_file.close()
+
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Resume for {{company_name}}</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                margin: 20px; 
+                padding: 20px;
+                line-height: 1.5;
+            }
+            h1 { 
+                color: #333; 
+                margin-bottom: 5px;
+            }
+            h2 { 
+                color: #333; 
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+                margin-top: 20px;
+            }
+            .section { 
+                margin-bottom: 20px; 
+            }
+            .info { 
+                font-size: 14px; 
+                margin-bottom: 20px;
+            }
+            .experience-item {
+                margin-bottom: 15px;
+            }
+            .job-title {
+                font-weight: bold;
+                margin-bottom: 0;
+            }
+            .company-date {
+                font-style: italic;
+                margin-top: 0;
+                margin-bottom: 5px;
+            }
+            ul {
+                margin-top: 5px;
+            }
+            .project-item {
+                margin-bottom: 15px;
+            }
+            .project-title {
+                font-weight: bold;
+            }
+            .technologies {
+                font-style: italic;
+                color: #555;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>{{name}}</h1>
+        <p class="info">
+            {% if email %}Email: {{email}} | {% endif %}
+            {% if phone %}Phone: {{phone}} | {% endif %}
+            {% if location %}Location: {{location}}{% endif %}
+            {% if links %}
+                <br>
+                {% for link in links %}
+                    {% if link.type == "LinkedIn" %}LinkedIn: {% endif %}
+                    {% if link.type == "GitHub" %}GitHub: {% endif %}
+                    {% if link.type == "Portfolio" %}Portfolio: {% endif %}
+                    <a href="{{link.url}}">{{link.url}}</a>
+                    {% if not loop.last %} | {% endif %}
+                {% endfor %}
+            {% endif %}
+        </p>
+        
+        <div class="section">
+            <h2>Professional Summary</h2>
+            <p>{{summary}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Skills</h2>
+            <p>{{skills_text}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Professional Experience</h2>
+            {% for exp in experience %}
+            <div class="experience-item">
+                <p class="job-title">{{exp.title}}</p>
+                <p class="company-date">{{exp.company}} | {{exp.dates}}</p>
+                <ul>
+                    {% for highlight in exp.highlights %}
+                    <li>{{highlight}}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if projects %}
+        <div class="section">
+            <h2>Relevant Projects</h2>
+            {% for project in projects %}
+            <div class="project-item">
+                <p class="project-title">{{project.name}}</p>
+                <p>{{project.description}}</p>
+                <p class="technologies">Technologies: {{project.technologies_text}}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if education %}
+        <div class="section">
+            <h2>Education</h2>
+            {% for edu in education %}
+            <p><strong>{{edu.degree}}</strong> | {{edu.institution}} | {{edu.dates}}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </body>
+    </html>
+    """
+
+    # Prepare template data
+    template_data = {
+        "company_name": company_name,
+        "name": resume_data.get('personalInfo', {}).get('name', 'Candidate'),
+        "email": resume_data.get('personalInfo', {}).get('email', ''),
+        "phone": resume_data.get('personalInfo', {}).get('phone', ''),
+        "location": resume_data.get('personalInfo', {}).get('location', ''),
+        "links": resume_data.get('personalInfo', {}).get('links', []),
+        "summary": resume_data.get('summary', ''),
+        "skills_text": ", ".join(resume_data.get('skills', [])),
+        "experience": resume_data.get('experience', []),
+        "projects": [{
+            **project,
+            "technologies_text": ", ".join(project.get('technologies', []))
+        } for project in resume_data.get('projects', [])],
+        "education": resume_data.get('education', [])
+    }
+
+    # Render and create PDF
+    template = Template(html_template)
+    html_content = template.render(**template_data)
+    
+    with open(temp_file.name, "w+b") as pdf_file:
+        pisa_status = pisa.CreatePDF(
+            html_content,
+            dest=pdf_file,
+            encoding='UTF-8',
+            link_callback=None
+        )
+    
+    return temp_file.name
