@@ -19,7 +19,12 @@ async def create_user():
     email = data['email']
     name = data['name']
     password = data['password']
-    
+        
+    # Check if user already exists
+    existing_user = await db.user.find_unique(where={"email": email})
+    if existing_user:
+        return jsonify({'error': 'User with this email already exists'}), 409
+        
     # Hash the password
     hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
     
