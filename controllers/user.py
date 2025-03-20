@@ -436,13 +436,14 @@ async def generate_custom_resume():
     try:
         await db.connect()
         
-        # Get job ID from request
-        job_id = request.args.get('jobId')
+        # Get job ID from request and clean it
+        job_id = request.args.get('jobId', '').strip('"')  # Remove any quotes
         if not job_id:
             return jsonify({"success": False, "error": "Job ID is required"}), 400
             
         # Get current user
         current_user = g.user
+        print(current_user, "here is the curren user")
         
         # Get user's resume data
         user = await db.user.find_unique(where={"id": current_user.id})
@@ -466,7 +467,8 @@ async def generate_custom_resume():
             job = tracked_job
         
         # Parse resume data
-        resume_data = json.loads(user.resume)
+        resume_data = user.resume
+        print(resume_data, "here is the resume data")
         
         # Prepare job data for the AI
         job_data = {
@@ -478,6 +480,7 @@ async def generate_custom_resume():
             "experience": job.experience or ""
         }
         
+        print(job_data, "here is the job data")
         # Generate tailored resume using Gemini API
         tailored_resume = await generate_tailored_resume(resume_data, job_data)
         
@@ -505,9 +508,12 @@ async def generate_custom_resume():
 async def generate_tailored_resume(resume_data, job_data):
     """Generate a tailored resume using Gemini API"""
     # Configure Gemini API
-    gemini_key = os.getenv('GEMINI_KEY')
-    genai.configure(api_key="AIzaSyAz8kbeNRYnksgdQuurQ4gumQWX7j1634w")
+    gemini_key = os.getenv('GOOGLE_API_KEY')
+    genai.configure(api_key=gemini_key)
     model = genai.GenerativeModel("gemini-2.0-flash")
+    
+    # Convert resume_data to a formatted string representation
+    resume_str = json.dumps(resume_data, indent=2)
     
     # Create prompt for Gemini
     prompt = f"""
@@ -522,7 +528,7 @@ async def generate_tailored_resume(resume_data, job_data):
     Experience Required: {job_data['experience']}
     
     MY CURRENT RESUME:
-    {json.dumps(resume_data, indent=2)}
+    {resume_str}
     
     Please create a tailored resume that:
     1. Highlights skills and experiences most relevant to this job
@@ -575,6 +581,7 @@ async def generate_tailored_resume(resume_data, job_data):
         else:
             tailored_resume = json.loads(response_text)
             
+        print(tailored_resume, "here is the tailored resume")    
         return tailored_resume
     except json.JSONDecodeError as e:
         print(f"Error parsing JSON: {e}")
@@ -589,110 +596,170 @@ async def generate_tailored_resume(resume_data, job_data):
         }
 
 def create_resume_pdf(resume_data, company_name):
-    """Create a PDF resume from the tailored resume data"""
-    # Create a temporary file
+    """Create a PDF resume from the tailored resume data using HTML template"""
+    try:
+        from xhtml2pdf import pisa
+        from jinja2 import Template
+    except ImportError:
+        return create_resume_pdf_fallback(resume_data, company_name)
+    
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
     temp_file.close()
-    
-    # Create the PDF document
-    doc = SimpleDocTemplate(temp_file.name, pagesize=letter)
-    styles = getSampleStyleSheet()
-    
-    # Create custom styles
-    styles.add(ParagraphStyle(name='Heading1', 
-                             fontName='Helvetica-Bold',
-                             fontSize=16, 
-                             spaceAfter=12))
-    styles.add(ParagraphStyle(name='Heading2', 
-                             fontName='Helvetica-Bold',
-                             fontSize=14, 
-                             spaceAfter=8))
-    styles.add(ParagraphStyle(name='Normal', 
-                             fontName='Helvetica',
-                             fontSize=12, 
-                             spaceAfter=6))
-    
-    # Build the document content
-    content = []
-    
-    # Add name and contact info (using personal info from original resume)
-    if 'personalInfo' in resume_data:
-        name = resume_data.get('personalInfo', {}).get('name', 'Candidate')
-        content.append(Paragraph(name, styles['Heading1']))
+
+    html_template = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Resume for {{company_name}}</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                margin: 20px; 
+                padding: 20px;
+                line-height: 1.5;
+            }
+            h1 { 
+                color: #333; 
+                margin-bottom: 5px;
+            }
+            h2 { 
+                color: #333; 
+                border-bottom: 1px solid #ddd;
+                padding-bottom: 5px;
+                margin-top: 20px;
+            }
+            .section { 
+                margin-bottom: 20px; 
+            }
+            .info { 
+                font-size: 14px; 
+                margin-bottom: 20px;
+            }
+            .experience-item {
+                margin-bottom: 15px;
+            }
+            .job-title {
+                font-weight: bold;
+                margin-bottom: 0;
+            }
+            .company-date {
+                font-style: italic;
+                margin-top: 0;
+                margin-bottom: 5px;
+            }
+            ul {
+                margin-top: 5px;
+            }
+            .project-item {
+                margin-bottom: 15px;
+            }
+            .project-title {
+                font-weight: bold;
+            }
+            .technologies {
+                font-style: italic;
+                color: #555;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>{{name}}</h1>
+        <p class="info">
+            {% if email %}Email: {{email}} | {% endif %}
+            {% if phone %}Phone: {{phone}} | {% endif %}
+            {% if location %}Location: {{location}}{% endif %}
+            {% if links %}
+                <br>
+                {% for link in links %}
+                    {% if link.type == "LinkedIn" %}LinkedIn: {% endif %}
+                    {% if link.type == "GitHub" %}GitHub: {% endif %}
+                    {% if link.type == "Portfolio" %}Portfolio: {% endif %}
+                    <a href="{{link.url}}">{{link.url}}</a>
+                    {% if not loop.last %} | {% endif %}
+                {% endfor %}
+            {% endif %}
+        </p>
         
-        # Contact info
-        contact_info = []
-        if 'email' in resume_data.get('personalInfo', {}):
-            contact_info.append(resume_data['personalInfo']['email'])
-        if 'phone' in resume_data.get('personalInfo', {}):
-            contact_info.append(resume_data['personalInfo']['phone'])
-        if 'location' in resume_data.get('personalInfo', {}):
-            contact_info.append(resume_data['personalInfo']['location'])
-            
-        content.append(Paragraph(" | ".join(contact_info), styles['Normal']))
-        content.append(Spacer(1, 12))
+        <div class="section">
+            <h2>Professional Summary</h2>
+            <p>{{summary}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Skills</h2>
+            <p>{{skills_text}}</p>
+        </div>
+
+        <div class="section">
+            <h2>Professional Experience</h2>
+            {% for exp in experience %}
+            <div class="experience-item">
+                <p class="job-title">{{exp.title}}</p>
+                <p class="company-date">{{exp.company}} | {{exp.dates}}</p>
+                <ul>
+                    {% for highlight in exp.highlights %}
+                    <li>{{highlight}}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if projects %}
+        <div class="section">
+            <h2>Relevant Projects</h2>
+            {% for project in projects %}
+            <div class="project-item">
+                <p class="project-title">{{project.name}}</p>
+                <p>{{project.description}}</p>
+                <p class="technologies">Technologies: {{project.technologies_text}}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if education %}
+        <div class="section">
+            <h2>Education</h2>
+            {% for edu in education %}
+            <p><strong>{{edu.degree}}</strong> | {{edu.institution}} | {{edu.dates}}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </body>
+    </html>
+    """
+
+    # Prepare template data
+    template_data = {
+        "company_name": company_name,
+        "name": resume_data.get('personalInfo', {}).get('name', 'Candidate'),
+        "email": resume_data.get('personalInfo', {}).get('email', ''),
+        "phone": resume_data.get('personalInfo', {}).get('phone', ''),
+        "location": resume_data.get('personalInfo', {}).get('location', ''),
+        "links": resume_data.get('personalInfo', {}).get('links', []),
+        "summary": resume_data.get('summary', ''),
+        "skills_text": ", ".join(resume_data.get('skills', [])),
+        "experience": resume_data.get('experience', []),
+        "projects": [{
+            **project,
+            "technologies_text": ", ".join(project.get('technologies', []))
+        } for project in resume_data.get('projects', [])],
+        "education": resume_data.get('education', [])
+    }
+
+    # Render and create PDF
+    template = Template(html_template)
+    html_content = template.render(**template_data)
     
-    # Add summary
-    if 'summary' in resume_data:
-        content.append(Paragraph("PROFESSIONAL SUMMARY", styles['Heading2']))
-        content.append(Paragraph(resume_data['summary'], styles['Normal']))
-        content.append(Spacer(1, 12))
-    
-    # Add skills
-    if 'skills' in resume_data and resume_data['skills']:
-        content.append(Paragraph("SKILLS", styles['Heading2']))
-        skills_text = ", ".join(resume_data['skills'])
-        content.append(Paragraph(skills_text, styles['Normal']))
-        content.append(Spacer(1, 12))
-    
-    # Add experience
-    if 'experience' in resume_data and resume_data['experience']:
-        content.append(Paragraph("PROFESSIONAL EXPERIENCE", styles['Heading2']))
-        
-        for exp in resume_data['experience']:
-            job_title = exp.get('title', '')
-            company = exp.get('company', '')
-            dates = exp.get('dates', '')
-            
-            content.append(Paragraph(f"<b>{job_title}</b> - {company} ({dates})", styles['Normal']))
-            
-            if 'highlights' in exp and exp['highlights']:
-                for highlight in exp['highlights']:
-                    content.append(Paragraph(f"• {highlight}", styles['Normal']))
-                    
-            content.append(Spacer(1, 8))
-    
-    # Add education
-    if 'education' in resume_data and resume_data['education']:
-        content.append(Paragraph("EDUCATION", styles['Heading2']))
-        
-        for edu in resume_data['education']:
-            degree = edu.get('degree', '')
-            institution = edu.get('institution', '')
-            dates = edu.get('dates', '')
-            
-            content.append(Paragraph(f"<b>{degree}</b> - {institution} ({dates})", styles['Normal']))
-            content.append(Spacer(1, 6))
-    
-    # Add projects if available
-    if 'projects' in resume_data and resume_data['projects']:
-        content.append(Paragraph("RELEVANT PROJECTS", styles['Heading2']))
-        
-        for project in resume_data['projects']:
-            name = project.get('name', '')
-            description = project.get('description', '')
-            technologies = project.get('technologies', [])
-            
-            content.append(Paragraph(f"<b>{name}</b>", styles['Normal']))
-            content.append(Paragraph(description, styles['Normal']))
-            
-            if technologies:
-                tech_text = f"<i>Technologies:</i> {', '.join(technologies)}"
-                content.append(Paragraph(tech_text, styles['Normal']))
-                
-            content.append(Spacer(1, 8))
-    
-    # Build the PDF
-    doc.build(content)
+    with open(temp_file.name, "w+b") as pdf_file:
+        pisa_status = pisa.CreatePDF(
+            html_content,
+            dest=pdf_file,
+            encoding='UTF-8',
+            link_callback=None
+        )
     
     return temp_file.name
