@@ -12,6 +12,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
+from utils.s3_utils import get_put_object_signed_url, get_object_signed_url
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -196,8 +197,6 @@ async def track_job():
     finally:
         await db.disconnect()
 
-
-
 @user_blueprint.route('/job/update/status', methods=['PUT'])
 async def update_job_status():
 
@@ -345,7 +344,7 @@ async def create_job():
 
 
 @user_blueprint.route('/resume/upload', methods=['POST'])
-def upload_resume():
+async def upload_resume():
     if 'resume' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     
@@ -353,35 +352,56 @@ def upload_resume():
     if file.filename == '' or not allowed_file(file.filename):
         return jsonify({'error': 'Invalid file type. Only PDF and DOCX are supported.'}), 400
 
-    temp_dir = tempfile.mkdtemp()
     try:
+        # Generate unique file key for S3
         extension = file.filename.rsplit('.', 1)[1].lower()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_key = f"resumes/{g.user.id}/{timestamp}_{file.filename}"
+        
+        # Get presigned URL for upload
+        presigned_url = get_put_object_signed_url({
+            'Bucket': os.getenv('AWS_BUCKET_NAME'),
+            'Key': file_key,
+            'ContentType': f'application/{extension}'
+        })
+
+        # Process file content
+        temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(temp_dir, file.filename)
         file.save(temp_path)
         
-        # Verify file is valid
+        # Validate PDF if applicable
         if extension == 'pdf':
             try:
-                # Try to open with PyMuPDF first to validate
                 doc = fitz.open(temp_path)
                 doc.close()
             except Exception as e:
                 return jsonify({'error': f'Invalid or corrupted PDF file: {str(e)}'}), 400
         
+        # Extract and parse text
         text = extract_text(temp_path, extension)
         if not text:
-            return jsonify({'error': 'Could not extract text from the file. The file may be empty, password-protected, or corrupted.'}), 400
+            return jsonify({'error': 'Could not extract text from the file'}), 400
             
         parsed_data = parse_resume(text)
-        print(parsed_data, "here is the parsed data")
-        return jsonify({"success": True, "parsed_data": parsed_data}), 200
+        
+        # Add S3 information to response
+        response_data = {
+            "success": True,
+            "parsed_data": parsed_data,
+            "upload_url": presigned_url,
+            "file_key": file_key
+        }
+        
+        return jsonify(response_data), 200
 
     except Exception as e:
-        print(f"Resume upload error: {str(e)}")  # Better error logging
+        print(f"Resume upload error: {str(e)}")
         return jsonify({'error': str(e)}), 500
+        
     finally:
-        # Cleanup
-        if os.path.exists(temp_dir):
+        # Cleanup temporary files
+        if 'temp_dir' in locals() and os.path.exists(temp_dir):
             for root, dirs, files in os.walk(temp_dir, topdown=False):
                 for name in files:
                     os.remove(os.path.join(root, name))
