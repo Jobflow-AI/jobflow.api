@@ -7,9 +7,9 @@ from function.aiHelper import extract_job_details_with_AI
 from function.insert_job import insert_job
 from db.prisma import db
 
-# Configure minimal logging
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-# logger = logging.getLogger(__name__)
+logging.basicConfig(filename= 'log.txt',  level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger(__name__)
 
 CHECK_LIMIT = 4
 
@@ -176,6 +176,7 @@ async def scrape_workday():
                 "last_job_ids": "[]"  
             })
         last_job_ids = set()
+        print("Scraping jobs for", company_name)
         if company.last_job_ids:
             try:
                 try:

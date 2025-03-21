@@ -3,6 +3,10 @@ from db.prisma import db
 from flask import jsonify
 from prisma.errors import UniqueViolationError
 import hashlib
+import logging
+
+logging.basicConfig(filename= 'log.txt',  level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 async def insert_job(job):
     # Ensure database connection
@@ -105,11 +109,11 @@ async def insert_job(job):
 
         # Proceed to insert the job if it doesn't exist
         job = await db.job.create(data=job_document)
-        print(job_document['title']," is added to database\n\n")
+        logger.info(f"{job_document['title']} is added to database")
         return job
 
     except Exception as e:
-        print(e, "Error from insert_job function")  # Output the error to the console for debugging
+        logger.error("Error from insert_job function", str(e))  # Output the error to the console for debugging
         return {'error': str(e)}, 500
     # finally:
     #     await db.disconnect()
