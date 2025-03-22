@@ -1,6 +1,7 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 enum JobStatus {
+  BOOKMARKED
   APPLIED
   ACCEPTED
   REJECTED
@@ -47,14 +48,14 @@ model job_statuses {
 
 // Jobs tracked by users
 model Tracked_Jobs {
-  id        String    @id @default(uuid()) @db.Uuid
-  jobId     String    @db.Uuid
-  job       Job       @relation(fields: [jobId], references: [id])
-  resumeUrl String?
-  userId    String    @db.Uuid
-  user      User      @relation(fields: [userId], references: [id])
-  status    JobStatus @default(APPLIED)
-  createdAt DateTime  @default(now())
+  id          String    @id @default(uuid()) @db.Uuid
+  jobId       String    @db.Uuid
+  job         Job       @relation(fields: [jobId], references: [id])
+  resumeUrl   String?
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id])
+  status      JobStatus @default(APPLIED)
+  createdAt   DateTime  @default(now())
 
   @@unique([jobId, userId], map: "UniqueTrackedJob")
 }

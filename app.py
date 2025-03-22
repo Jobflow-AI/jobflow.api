@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, request
 from controllers.auth import auth_blueprint
 from controllers.job import job_blueprint
 from controllers.user import user_blueprint
@@ -13,12 +13,40 @@ from datetime import datetime
 from function.job_expires.job_expirations import run_job_expiration
 import logging
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Set up logging - MODIFIED FORMAT
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
+# Flask app setup with custom handler - SIMPLIFIED FORMAT
 app = Flask(__name__)
+app.logger.propagate = False  # Prevent duplicate logs
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter(
+    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+app.logger.addHandler(handler)
 
+# Enable Flask's built-in logging
+app.logger.setLevel(logging.DEBUG)
+
+@app.after_request
+def log_response_info(response):
+    # Skip logging for OPTIONS requests
+    if request.method == 'OPTIONS':
+        return response
+        
+    app.logger.debug(
+        f"Request: {request.method} {request.url} | "
+        f"Response: {response.status}"
+    )
+    return response
+
+# Remove the @app.before_request decorator and its function
 CORS(
     app,
     origins="*",  # Replace "*" with specific domains if needed, e.g., ["https://example.com"]

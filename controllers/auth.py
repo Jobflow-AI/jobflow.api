@@ -6,6 +6,8 @@ import httpx
 
 auth_blueprint = Blueprint('auth', __name__)
 
+DEFAULT_STATUSES = ["BOOKMARKED", "APPLIED", "ACCEPTED", "REJECTED"]
+
 @auth_blueprint.route('/register', methods=['POST'])
 async def create_user():
     await db.connect()
@@ -38,7 +40,14 @@ async def create_user():
             }
         )
 
-        # Call setCookie to generate the response
+        # Create default job statuses
+        for status in DEFAULT_STATUSES:
+            await db.job_statuses.create(data={
+                "user": {"connect": {"id": user.id}},
+                "label": status,
+                "value": 0
+            })
+
         response = await setCookie(user)
         return response
     
@@ -76,16 +85,17 @@ async def google_auth():
         is_new_user = False
         
         if not user:
-            # Create a new user with async Prisma
-            user = await db.user.create(
-                data={
-                    'email': email,
-                    'name': name,
-                }
-            )
+            user = await db.user.create(data={'email': email, 'name': name})
             is_new_user = True
 
-        # Call setCookie to generate the response
+            # Create default job statuses for new Google user
+            for status in DEFAULT_STATUSES:
+                await db.job_statuses.create(data={
+                    "user": {"connect": {"id": user.id}},
+                    "label": status,
+                    "value": 0
+                })
+
         response = await setCookie(user)
         
         # Add newUser flag to the response
