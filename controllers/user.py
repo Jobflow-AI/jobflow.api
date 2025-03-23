@@ -768,15 +768,17 @@ async def add_job_status():
         current_user = g.user
         data = request.get_json()
 
-        # Validate input
+        # Validate input and process label
         if 'label' not in data or not data['label']:
             return jsonify({"error": "Label is required"}), 400
+        
+        label = data['label'].strip().upper()  # Convert to uppercase and trim whitespace
 
-        # Check for existing status with same label
+        # Check for existing status with same label (case-insensitive)
         existing_status = await db.job_statuses.find_first(
             where={
                 "userId": current_user.id,
-                "label": data['label']
+                "label": label  # Now checking uppercase version
             }
         )
 
@@ -794,10 +796,10 @@ async def add_job_status():
                 "message": "Status updated"
             }), 200
         else:
-            # Create new status
+            # Create new status with uppercase label
             new_status = await db.job_statuses.create({
                 "user": {"connect": {"id": current_user.id}},
-                "label": data['label'],
+                "label": label,  # Store in uppercase
                 "value": data.get('value', 0)
             })
             return jsonify({
@@ -811,6 +813,61 @@ async def add_job_status():
         return jsonify({"error": str(e)}), 500
     finally:
         await db.disconnect()
+
+@user_blueprint.route('/jobstatus/update/<string:status_id>', methods=['PUT'])
+async def update_jobstatuses(status_id):
+    try:
+        await db.connect()
+        current_user = g.user
+        data = request.get_json()
+
+        # Verify status exists and belongs to user
+        status = await db.job_statuses.find_unique(
+            where={"id": status_id}
+        )
+        if not status:
+            return jsonify({"error": "Status not found"}), 404
+        if status.userId != current_user.id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        update_data = {}
+        if 'label' in data and data['label']:
+            label = data['label'].strip().upper()  # Convert to uppercase
+            # Check for existing status with new label
+            existing = await db.job_statuses.find_first(
+                where={
+                    "userId": current_user.id,
+                    "label": label,  # Check uppercase version
+                    "id": {"not": status_id}
+                }
+            )
+            if existing:
+                return jsonify({"error": "Status label already exists"}), 400
+            update_data['label'] = label  # Store uppercase
+            
+        if 'value' in data:
+            update_data['value'] = data['value']
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        updated_status = await db.job_statuses.update(
+            where={"id": status_id},
+            data=update_data
+        )
+        
+        return jsonify({
+            "success": True,
+            "status": updated_status.model_dump(),
+            "message": "Status updated successfully"
+        }), 200
+
+    except Exception as e:
+        print(f"Error updating job status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        await db.disconnect()
+
 
 @user_blueprint.route('/jobstatus/delete/<string:status_id>', methods=['DELETE'])
 async def delete_job_status(status_id):
@@ -842,3 +899,4 @@ async def delete_job_status(status_id):
         return jsonify({"error": str(e)}), 500
     finally:
         await db.disconnect()
+

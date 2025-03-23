@@ -1,11 +1,5 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
-enum JobStatus {
-  BOOKMARKED
-  APPLIED
-  ACCEPTED
-  REJECTED
-}
 
 generator client {
   provider = "prisma-client-py"
@@ -54,7 +48,7 @@ model Tracked_Jobs {
   resumeUrl   String?
   userId      String    @db.Uuid
   user        User      @relation(fields: [userId], references: [id])
-  status      JobStatus @default(APPLIED)
+  status      String    @default("APPLIED")
   createdAt   DateTime  @default(now())
 
   @@unique([jobId, userId], map: "UniqueTrackedJob")
