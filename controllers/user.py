@@ -18,89 +18,60 @@ user_blueprint = Blueprint('user', __name__)
 
 @user_blueprint.route('/get', methods=['GET'])
 async def get_user():
-   
     try:
         await db.connect()
-    
         currentUser = g.user
 
-        user = await db.user.find_unique(where={"id": currentUser.id})
+        # Include job_statuses in the query
+        user = await db.user.find_unique(
+            where={"id": currentUser.id},
+            include={'job_statuses': True}  # Add this line
+        )
+        
         if not user:
             return jsonify({"error": "User not exists"}), 400
         
         user_dict = user.model_dump() 
-        
         return jsonify({"success": True, "user": user_dict}), 200
-    
+
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
+        print(e, "here is the error")
         return jsonify({'error': str(e)}), 500
-    
     finally:
-        # Disconnect Prisma client
         await db.disconnect()
 
 
 @user_blueprint.route('/update', methods=['PUT'])
 async def update_user():
     try:
-        # Connect to the database
         await db.connect()
-
         currentUser = g.user
-
-        # Fetch the current user from the database
         user = await db.user.find_unique(where={"id": currentUser.id})
         if not user:
             return jsonify({"error": "User does not exist"}), 400
 
-        # Get the request data
         body_data = request.get_json()
-        print(body_data, "here is body data")
-
-        # Prepare the fields to update
         update_data = {}
 
-        # Update name if provided
+        # Keep only name and email updates
         if 'name' in body_data and body_data['name']:
             update_data['name'] = body_data['name']
-
-        # Update email if provided
         if 'email' in body_data and body_data['email']:
             update_data['email'] = body_data['email']
 
-        # Update job_statuses if provided
-        if 'job_statuses' in body_data and isinstance(body_data['job_statuses'], list):
-            # Ensure job_statuses is a list of dictionaries with 'label' and 'value'
-            valid_job_statuses = [
-                {
-                    "label": status_entry.get('label', ''),
-                    "value": status_entry.get('value', 0)
-                } for status_entry in body_data['job_statuses']
-                if 'label' in status_entry and 'value' in status_entry
-            ]
-            # Convert to JSON string for the database
-            update_data['job_statuses'] = json.dumps(valid_job_statuses)
-
-
-        # If there are fields to update, perform the update
-        if update_data:
+        if update_data: 
             updated_user = await db.user.update(
                 where={"id": currentUser.id},
                 data=update_data
             )
-
-            user_dict = updated_user.model_dump()
-            return jsonify({"success": True, "user": user_dict}), 200
+            return jsonify({"success": True, "user": updated_user.model_dump()}), 200
         else:
             return jsonify({"error": "No valid fields to update"}), 400
 
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
+        print(f"Update error: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
     finally:
-        # Disconnect Prisma client
         await db.disconnect()
 
 
@@ -123,7 +94,11 @@ async def get_user_jobs():
         userAppliedJobs = await db.tracked_jobs.find_many(
             where={"userId": user.id},
             include={
-                'company': True
+                'job': {
+                    'include': {
+                        'company': True  # Add company relation
+                    }
+                }
             }
         )
         jobs_serialized = [job.model_dump() for job in userAppliedJobs]
@@ -155,43 +130,44 @@ async def track_job():
         if not status:
             return jsonify({"success": False, "error": "Status is missing"}), 400
 
+        # Validate status against JobStatus enum
+        if status.upper() not in ['APPLIED', 'ACCEPTED', 'REJECTED']:
+            return jsonify({"success": False, "error": "Invalid job status"}), 400
+
         job = await db.job.find_unique(where={"id": jobId})
         if not job:
             return jsonify({"success": False, "error": "Job does not exist"}), 404
 
-        print(job, "here is the job")
-
         # Get the current user from the request context
         currentUser = g.user
 
-        # Check if the job has already been applied for by the user
-        applied_job = await db.tracked_jobs.find_first(
-            where={"userId": currentUser.id, "title": job.title, "companyId": job.companyId}
+        print(jobId, status, "here are jobid and status")
+
+        # Check existing tracking
+        existing_tracking = await db.tracked_jobs.find_first(
+            where={
+                "userId": currentUser.id,
+                "jobId": jobId
+            }
         )
         
-        if applied_job:
-            return jsonify({"success": False, "error": "Job already applied"}), 400
+        if existing_tracking:
+            return jsonify({"success": False, "error": "Job already tracked"}), 400
 
-        # Create the application entry
+        # Create tracking entry with proper enum value
         await db.tracked_jobs.create(
             data={
                 "userId": currentUser.id,
-                "title": job.title,
-                "job_link": job.job_link,
-                "companyId": job.companyId,
-                "job_location": job.job_location,
-                "job_type": job.job_type,
-                "job_salary": job.job_salary,
-                "source": job.source,
-                "posted": job.posted,
-                "status": status
+                "jobId": jobId,  # Proper relation syntax
+                "status": status.upper(),
+                # appliedDate is now handled by the schema default
             }
         )
 
-        return jsonify({"success": True, "message": "Job added to tracker"}), 200
+        return jsonify({"success": True, "message": "Job tracked successfully"}), 200
 
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
+        print(e, "here is the error")
         return jsonify({"success": False, "error": str(e)}), 500
 
     finally:
@@ -783,3 +759,144 @@ def create_resume_pdf(resume_data, company_name):
         )
     
     return temp_file.name
+
+
+@user_blueprint.route('/jobstatus/add', methods=['POST'])
+async def add_job_status():
+    try:
+        await db.connect()
+        current_user = g.user
+        data = request.get_json()
+
+        # Validate input and process label
+        if 'label' not in data or not data['label']:
+            return jsonify({"error": "Label is required"}), 400
+        
+        label = data['label'].strip().upper()  # Convert to uppercase and trim whitespace
+
+        # Check for existing status with same label (case-insensitive)
+        existing_status = await db.job_statuses.find_first(
+            where={
+                "userId": current_user.id,
+                "label": label  # Now checking uppercase version
+            }
+        )
+
+        if existing_status:
+            # Update existing status
+            updated_status = await db.job_statuses.update(
+                where={"id": existing_status.id},
+                data={
+                    "value": data.get('value', existing_status.value)
+                }
+            )
+            return jsonify({
+                "success": True,
+                "status": updated_status.model_dump(),
+                "message": "Status updated"
+            }), 200
+        else:
+            # Create new status with uppercase label
+            new_status = await db.job_statuses.create({
+                "user": {"connect": {"id": current_user.id}},
+                "label": label,  # Store in uppercase
+                "value": data.get('value', 0)
+            })
+            return jsonify({
+                "success": True,
+                "status": new_status.model_dump(),
+                "message": "Status created"
+            }), 201
+
+    except Exception as e:
+        print(f"Error adding/updating job status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        await db.disconnect()
+
+@user_blueprint.route('/jobstatus/update/<string:status_id>', methods=['PUT'])
+async def update_jobstatuses(status_id):
+    try:
+        await db.connect()
+        current_user = g.user
+        data = request.get_json()
+
+        # Verify status exists and belongs to user
+        status = await db.job_statuses.find_unique(
+            where={"id": status_id}
+        )
+        if not status:
+            return jsonify({"error": "Status not found"}), 404
+        if status.userId != current_user.id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        update_data = {}
+        if 'label' in data and data['label']:
+            label = data['label'].strip().upper()  # Convert to uppercase
+            # Check for existing status with new label
+            existing = await db.job_statuses.find_first(
+                where={
+                    "userId": current_user.id,
+                    "label": label,  # Check uppercase version
+                    "id": {"not": status_id}
+                }
+            )
+            if existing:
+                return jsonify({"error": "Status label already exists"}), 400
+            update_data['label'] = label  # Store uppercase
+            
+        if 'value' in data:
+            update_data['value'] = data['value']
+
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+
+        updated_status = await db.job_statuses.update(
+            where={"id": status_id},
+            data=update_data
+        )
+        
+        return jsonify({
+            "success": True,
+            "status": updated_status.model_dump(),
+            "message": "Status updated successfully"
+        }), 200
+
+    except Exception as e:
+        print(f"Error updating job status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        await db.disconnect()
+
+
+@user_blueprint.route('/jobstatus/delete/<string:status_id>', methods=['DELETE'])
+async def delete_job_status(status_id):
+    try:
+        await db.connect()
+        current_user = g.user
+
+        # Verify status exists and belongs to user
+        status = await db.job_statuses.find_unique(
+            where={"id": status_id}
+        )
+        
+        if not status:
+            return jsonify({"error": "Status not found"}), 404
+            
+        if status.userId != current_user.id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        # Delete the status
+        await db.job_statuses.delete(where={"id": status_id})
+        
+        return jsonify({
+            "success": True,
+            "message": "Status deleted successfully"
+        }), 200
+
+    except Exception as e:
+        print(f"Error deleting job status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        await db.disconnect()
+

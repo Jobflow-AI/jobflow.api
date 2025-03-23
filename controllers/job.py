@@ -6,9 +6,11 @@ from utils import serialize_job
 import os
 from function.utils import scrape_job_link
 from function.crawler.job_portals import scrape_ycombinator_jobpage, scrape_linkedin_jobpage
+from function.job_expires.job_expirations import run_job_expiration
 from utils.functions import checkExistingJob
 from middleware import protect_routes
 from functools import wraps
+from datetime import datetime, timedelta
 
 scraperapi_key = os.getenv('SCRAPER_API')
 
@@ -185,3 +187,78 @@ async def scrape_job():
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
+
+@job_blueprint.route('/expire', methods=['GET'])
+# @protect_route()
+async def expire_jobs():   
+    try:
+        
+        if not db.is_connected():
+            await db.connect()
+            
+        print("Running scheduled job expiration")
+        # Run the job expiration process
+        expired_count = await run_job_expiration()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Successfully expired {expired_count} jobs',
+            'expired_count': expired_count
+        }), 200
+    
+    except Exception as e:
+        print(f"Error in expire_jobs function: {e}")  # Output the error to the console for debugging
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        await db.disconnect()
+
+@job_blueprint.route('/stats', methods=['GET'])
+async def get_job_stats():   
+    try:
+        if not db.is_connected():
+            await db.connect()
+            
+        # Get total jobs
+        total_jobs = await db.job.count()
+        
+        # Get active jobs
+        active_jobs = await db.job.count(
+            where={
+                "status": "active"
+            }
+        )
+        
+        # Get jobs with end_date in the past
+        current_date = datetime.now()
+        expired_end_date = await db.job.count(
+            where={
+                "end_date": {"lte": current_date},
+                "status": "active"
+            }
+        )
+        
+        # Get jobs older than 30 days
+        thirty_days_ago = current_date - timedelta(days=30)
+        old_jobs = await db.job.count(
+            where={
+                "posted": {"lte": thirty_days_ago},
+                "status": "active"
+            }
+        )
+        
+        return jsonify({
+            'total_jobs': total_jobs,
+            'active_jobs': active_jobs,
+            'jobs_with_expired_end_date': expired_end_date,
+            'jobs_older_than_30_days': old_jobs,
+            'current_time': current_date.isoformat(),
+            'thirty_days_ago': thirty_days_ago.isoformat()
+        }), 200
+    
+    except Exception as e:
+        print(f"Error in get_job_stats: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    finally:
+        await db.disconnect()

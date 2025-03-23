@@ -33,15 +33,15 @@ async def scrapejobsdata(searchKeyword):
 
     jobPortals = {
         "glassdoor": f"https://www.glassdoor.co.in/Job/india-{searchKeyword}-jobs-SRCH_IL.0,5_IN115_KO6,27.htm?sc.keyword={searchKeyword}&sortBy=date_desc",
-        "linkedin": f"https://www.linkedin.com/jobs/search?keywords={searchKeyword}",
-        "simplyhired": f"https://www.simplyhired.co.in/search?q={searchKeyword}",
+        "linkedin": f"https://www.linkedin.com/jobs/search/?f_TPR=r2000&geoId=102713980&sortBy=DD",
+        "simplyhired": f"https://www.simplyhired.co.in/search?q={searchKeyword}&l=india&s=d&jt=CF3CP&t=1&mip=555000",  # Use only important keywords & scrape
         "indeed": f"https://in.indeed.com/jobs?q={searchKeyword}",
-        "ycombinator": f"https://www.workatastartup.com/companies?query={searchKeyword}&sortBy=keyword",
-        "internshala": f"https://internshala.com/jobs/{searchKeyword}-jobs/",
+        # "ycombinator": f"https://www.workatastartup.com/companies?query={searchKeyword}&sortBy=keyword",   # Need signin
+        # "internshala": f"https://internshala.com/jobs/salary-7/",   # Not in sorted order or filter by date.
         "upwork": f"https://www.upwork.com/nx/search/jobs/?q={searchKeyword}",
         "freelancer": f"https://www.freelancer.com/search/projects?q={searchKeyword}",
-        "naukri": f"https://www.naukri.com/{searchKeyword}-jobs?k={searchKeyword}",
-        # "foundit": f"https://www.foundit.in/srp/results?query={searchKeyword}",
+        # "naukri": f"https://www.naukri.com/jobs-in-india?jobAge=1",   # Use all filters to limit quality jobs
+        # "foundit": f"https://www.foundit.in/srp/results?query={searchKeyword}",   # Proxy issue
     }
 
     for portal, url in jobPortals.items():

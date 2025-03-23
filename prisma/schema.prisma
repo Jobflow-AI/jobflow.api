@@ -11,88 +11,88 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(uuid()) @db.Uuid
-  name          String
-  email         String   @unique
-  password      String?
-  job_statuses  Json     @default("[{\"label\":\"bookmarked\",\"value\":0},{\"label\":\"applied\",\"value\":0},{\"label\":\"accepted\",\"value\":0},{\"label\":\"rejected\",\"value\":0}]")
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String
+  email           String         @unique
+  password        String?
+  job_statuses    job_statuses[]
   bookmarked_jobs String[]
-  jobs          Tracked_Jobs[]
-  created_at    DateTime @default(now())
-  
-  // Resume information
-  resume        Json?    // Stores the entire parsed resume
+  jobs            Tracked_Jobs[]
+  created_at      DateTime       @default(now())
+  resume          ResumeSection[]
+}
+
+model ResumeSection {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id])
+  sectionType String   // @index // e.g., "info", "education", "skills"
+  content     Json     // Stores section-specific data
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model job_statuses {
+  id     String @id @default(uuid()) @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @db.Uuid
+  label  String // e.g., "bookmarked", "applied", "accepted", "rejected"
+  value  Int    // Count of each status
 }
 
 // Jobs tracked by users
 model Tracked_Jobs {
-  id            String  @id @default(uuid()) @db.Uuid
-  title         String
-  job_link      String?
-  job_type      String?
-  job_id        String? @unique
-  apply_link    String?
-  job_location  String?
-  salary_min    String?   
-  salary_max    String?
-  job_salary    String?  
-  experience_min Int?     
-  experience_max Int?   
-  experience    String? 
-  job_description String? 
-  skills_required String? 
-  source        String?
-  source_logo   String?
-  posted        DateTime? @default(now())
-  status        String  @default("applied")
+  id          String    @id @default(uuid()) @db.Uuid
+  jobId       String    @db.Uuid
+  job         Job       @relation(fields: [jobId], references: [id])
+  resumeUrl   String?
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id])
+  status      String    @default("APPLIED")
+  createdAt   DateTime  @default(now())
 
-  userId        String  @db.Uuid
-  user          User    @relation(fields: [userId], references: [id])
-
-  companyId     String?   @db.Uuid
-  company       Company?  @relation(fields: [companyId], references: [id])
-  @@unique([title, companyId, userId], map: "UniqueTrackedJob")
+  @@unique([jobId, userId], map: "UniqueTrackedJob")
 }
 
 model Company {
-  id               String   @id @default(uuid()) @db.Uuid
-  company_name     String   @unique(map: "UniqueCompanyName")
-  description      String?
-  about            Json?
-  company_link     String?
-  company_logo     String?
-  socials          Json?    // JSON field to store all social media links
-  last_job_ids     Json?    // Added this for storing job Ids
+  id           String   @id @default(uuid()) @db.Uuid
+  company_name String   @unique(map: "UniqueCompanyName")
+  description  String?
+  about        Json?
+  company_link String?
+  company_logo String?
+  socials      Json?    // JSON field to store all social media links
+  last_job_ids Json?    // Added this for storing job Ids
+  jobs         Job[]
 
-  jobs             Job[]
-  trackedJobs      Tracked_Jobs[]
-
-  @@unique([company_name], map: "UniqueCompanyNameConstraint") // Ensures that company names are unique
+  @@unique([company_name], map: "UniqueCompanyNameConstraint")
 }
 
 model Job {
-  id            String   @id @default(uuid()) @db.Uuid
-  title         String
-  job_link      String
-  job_type      String?
-  job_id        String? @unique
-  apply_link    String?
-  job_location  String?
-  salary_min    String?   
-  salary_max    String?
-  job_salary    String?  
-  experience_min Int?     
-  experience_max Int?   
-  experience    String? 
-  job_description String? 
-  skills_required String? 
-  source        String
-  source_logo   String?
-  posted        DateTime @default(now())
-  created_at    DateTime @default(now())
-  end_date      DateTime?
-  companyId     String   @db.Uuid
-  company       Company?  @relation(fields: [companyId], references: [id])
+  id             String       @id @default(uuid()) @db.Uuid
+  title          String
+  job_link       String
+  job_type       String?
+  job_id         String?       @unique
+  apply_link     String?
+  job_location   String?     // @index
+  salary_min     String?
+  salary_max     String?
+  job_salary     String?
+  experience_min Int?
+  experience_max Int?
+  experience     String?
+  job_description String?
+  skills_required String?
+  source         String
+  source_logo    String?
+  posted         DateTime     @default(now())
+  created_at     DateTime     @default(now())
+  end_date       DateTime?
+  companyId      String       @db.Uuid
+  company        Company?     @relation(fields: [companyId], references: [id])
+  status         String       @default("active") // @index // active, inactive
+  trackedJobs    Tracked_Jobs[]
 
-  @@unique([title, companyId], map: "UniqueJobTitleCompany")  // This creates a unique index on title and companyId
+  @@unique([title, job_id, companyId], map: "UniqueJobTitleCompany")
 }
