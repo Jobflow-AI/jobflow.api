@@ -72,6 +72,7 @@ async def scrape_glassdoor_jobpage(soup):
 
                 company_logo = logo_url
 
+                time.sleep(2)
                 job_description = fetch_job_details_glassdoor(job_link)
                 job_description = job_description.get_text(strip=True)
 
@@ -162,14 +163,27 @@ async def scrape_glassdoor():
     for keyword in searchKeywords:
         keyword_hyphenated = keyword.replace(" ", "-")
         ko_end = 6 + len(keyword_hyphenated) + 1  
-        url = f"https://www.glassdoor.co.in/Job/india-{keyword_hyphenated}-jobs-SRCH_IL.0,5_IN115_KO6,{ko_end}.htm?maxSalary=6000000&minSalary=700000&fromAge=1&sortBy=date_desc"
-       
-        proxy_url = f"http://api.scraperapi.com?api_key={scraperapi_key}&url={url}"
-        response = requests.get(proxy_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        print(url)
-        currentJobs=await scrape_glassdoor_jobpage(soup)
+        base_url = "https://www.glassdoor.co.in/Job/india-{keyword}-jobs-SRCH_IL.0,5_IN115_KO6,{ko_end}.htm"
+        seniority_types = ["entrylevel", "internship"]
+        currentJobs = 0
+        for seniority in seniority_types:
+            params = {
+                "maxSalary": 6000000,
+                "minSalary": 10000,
+                "fromAge": 1,
+                "sortBy": "date_desc",
+                "seniorityType": seniority
+            }
+            url = base_url.format(keyword=keyword_hyphenated, ko_end=ko_end)
+            url += "?" + "&".join(f"{k}={v}" for k, v in params.items())
+
+            proxy_url = f"http://api.scraperapi.com?api_key={scraperapi_key}&url={url}"
+            response = requests.get(proxy_url, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+            print(f"URL for {seniority}: {url}")
+            time.sleep(2)
+            currentJobs += await scrape_glassdoor_jobpage(soup)
         total_jobs += currentJobs
         print(f"Jobs fetched: {currentJobs} for {keyword} jobs")
         
