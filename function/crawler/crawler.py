@@ -31,6 +31,9 @@ async def scrape_workday_jobs():
 async def scrape_linkedin_jobs():
     await scrape_linkedin()
 
+async def scrape_glassdoor_jobs():
+    await scrape_glassdoor()
+
 async def scrapejobsdata(searchKeyword):
     searchKeyword = urllib.parse.quote(searchKeyword)  # Encodes spaces as %20
 
@@ -67,8 +70,8 @@ async def scrapejobsdata(searchKeyword):
                 print(portal)
                 # await scrape_linkedin(soup)
 
-            elif portal == 'glassdoor':
-                await scrape_glassdoor(soup)
+            # elif portal == 'glassdoor':
+                # await scrape_glassdoor(soup)
 
             elif portal == 'indeed':
                 await scrape_indeed(soup)

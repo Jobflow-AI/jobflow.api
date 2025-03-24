@@ -1,5 +1,5 @@
 import asyncio
-from function.crawler.crawler import scrapejobsdata, scrape_workday_jobs, scrape_linkedin_jobs
+from function.crawler.crawler import scrapejobsdata, scrape_workday_jobs, scrape_linkedin_jobs, scrape_glassdoor_jobs
 
 searchKeywords = [
     "software developer",
@@ -25,8 +25,26 @@ searchKeywords = [
 ]
 
 async def run_crawler():
-    await scrape_workday_jobs()
-    await scrape_linkedin_jobs()
+    # await scrape_workday_jobs()     
+    # Once/Twice Daily
+    # 20 jobs, 70 Sec => 
+    # Todo :- Add more workday links.
+
+
+    # LinkedIn
+    # await scrape_linkedin_jobs()    
+    # Hourly
+    # Todo :- Gemini RPM Issue.
+
+
+
+    # await scrape_glassdoor_jobs()   
+    # Daily
+    # Todo :- Check & Scrape properly.
+            # - Add all Necessary Keywords
+    
+    
+    
     # for keyword in searchKeywords:
     #     await scrapejobsdata(keyword)
 
