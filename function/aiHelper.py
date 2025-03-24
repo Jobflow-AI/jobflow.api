@@ -16,6 +16,7 @@ You are an AI assistant tasked with extracting structured job details from a job
 - experience_max (int or null): Maximum years of experience (e.g., 5) or null if not found.
 - experience (string or null): Experience level (e.g., "mid-level", "Trainee", "new-grad", "fresher", "Experienced") understand what it could be based on the min & max experience and based on JD & role. If its hard or less precise return null.
 - skills_required (list of strings or null): List of skills (e.g., ["Python", "SQL"]) or null if not found.
+- end_date (string or null): End date of the job (e.g., "2024-12-31") or null if not found.
 
 Return the result as a JSON object. If a field cannot be determined, use null. Be precise and avoid guessing.
 """
@@ -50,4 +51,5 @@ def extract_job_details_with_AI(job_description):
             "experience_max": None,
             "experience": None,
             "skills_required": None,
+            "end_date": None,
         }
