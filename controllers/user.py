@@ -388,41 +388,54 @@ async def upload_resume():
 async def save_resume_data():
     try:
         await db.connect()
-        
-        # Get the current user from the request context
         currentUser = g.user
-        
-        # Get the resume data from the request body
         resume_data = request.get_json()
-        
+
         if not resume_data:
-            return jsonify({"success": False, "error": "No resume data provided"}), 400
+            return jsonify({"error": "No resume data provided"}), 400
+
+        created_sections = []
+        for section_type, section_items in resume_data.items():
+            # Ensure proper list structure for JSON array
+            if not isinstance(section_items, list):
+                section_items = [section_items]
+
+            prisma_content = [item if isinstance(item, dict) else {"value": item} 
+                             for item in section_items]
             
-        # Convert the resume data to a JSON string
-        resume_json_str = json.dumps(resume_data)
-        
-        # Prepare the data for updating the user
-        update_data = {
-            "resume": resume_json_str  # Store the resume as a JSON string
-        }
-        
-        # Update the user with the resume data
-        updated_user = await db.user.update(
-            where={"id": currentUser.id},
-            data=update_data
-        )
-        
-        # Return success response
+            existing_section = await db.resumesection.find_first(
+                where={
+                    "userId": currentUser.id,
+                    "sectionType": section_type
+                }
+            )
+            
+            if existing_section:
+                resume_section = await db.resumesection.update(
+                    where={"id": existing_section.id},
+                    data={
+                        "content": prisma_content,
+                        "userId": currentUser.id  # Direct scalar assignment
+                    }
+                )
+            else:
+                resume_section = await db.resumesection.create(
+                    data={
+                        "sectionType": section_type,
+                        "content": prisma_content,
+                        "userId": currentUser.id  # Required scalar field
+                    }
+                )
+            created_sections.append(resume_section)
+
         return jsonify({
-            "success": True, 
-            "message": "Resume data saved successfully",
-            "user": updated_user.model_dump()
+            "success": True,
+            "sections": [section.model_dump() for section in created_sections]
         }), 200
-        
+
     except Exception as e:
-        print(f"Error saving resume data: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
-        
+        print(f"Error saving resume: {str(e)}")
+        return jsonify({"error": str(e)}), 500
     finally:
         await db.disconnect()
 
