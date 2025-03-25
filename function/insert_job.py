@@ -102,7 +102,8 @@ async def insert_job(job):
         # Check if the job already exists
         existing_job = await db.job.find_first(where={
             "title": job_document['title'],
-            "companyId": job_document['companyId']
+            "companyId": job_document['companyId'],
+            "status": "active"
         })
         if existing_job:
             logger.info(f"{job_document['title']} already exists for this company")
