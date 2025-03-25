@@ -405,9 +405,7 @@ async def save_resume_data():
             if not isinstance(section_items, list):
                 section_items = [section_items]
 
-            prisma_content = [item if isinstance(item, dict) else {"value": item} 
-                             for item in section_items]
-            
+            prisma_content = json.dumps(section_items)
             existing_section = await db.resumesection.find_first(
                 where={
                     "userId": currentUser.id,
@@ -420,7 +418,7 @@ async def save_resume_data():
                     where={"id": existing_section.id},
                     data={
                         "content": prisma_content,
-                        "userId": currentUser.id  # Direct scalar assignment
+                        "user": {"connect": {"id": currentUser.id}}
                     }
                 )
             else:
@@ -428,7 +426,7 @@ async def save_resume_data():
                     data={
                         "sectionType": section_type,
                         "content": prisma_content,
-                        "userId": currentUser.id  # Required scalar field
+                        "user": {"connect": {"id": currentUser.id}}
                     }
                 )
             created_sections.append(resume_section)
