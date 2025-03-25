@@ -34,6 +34,9 @@ async def scrape_linkedin_jobs():
 async def scrape_glassdoor_jobs():
     await scrape_glassdoor()
 
+async def scrape_simplyhired_jobs():
+    await scrape_simplyhired()
+
 async def scrapejobsdata(searchKeyword):
     searchKeyword = urllib.parse.quote(searchKeyword)  # Encodes spaces as %20
 
