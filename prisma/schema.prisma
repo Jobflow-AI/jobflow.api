@@ -19,6 +19,7 @@ model User {
   bookmarked_jobs String[]
   jobs            Tracked_Jobs[]
   created_at      DateTime       @default(now())
+  resumeUrl       String?
   resume          ResumeSection[]
 }
 
