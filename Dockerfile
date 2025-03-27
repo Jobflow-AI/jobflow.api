@@ -1,13 +1,15 @@
 # Stage 1: Build Stage
-FROM python:3.9-slim AS builder
+FROM python:3.9.18-slim AS builder
 
-# Set environment variables to prevent .pyc files and enable unbuffered logging
+# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# Install build dependencies
+# Install build dependencies including PyMuPDF requirements
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libmupdf-dev \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -15,17 +17,28 @@ WORKDIR /jobflow-api
 
 # Copy dependency file and install dependencies
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install gunicorn  # Add explicit gunicorn installation
 
-# Generate Prisma client
+# Generate Prisma client (Fixed command)
 COPY db/ ./db/
-RUN pip install prisma && python -c "from prisma import generate_client; generate_client()"
+COPY prisma/ ./prisma/
+RUN pip install prisma && \
+    prisma generate --schema=prisma/schema.prisma
 
 # Copy the rest of the application code
 COPY . .
 
 # Stage 2: Final Image
-FROM python:3.9-slim
+FROM python:3.9.18-slim
+
+# Install runtime dependencies for PyMuPDF
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libmupdf-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -45,13 +58,10 @@ WORKDIR /jobflow-api
 # Copy only the installed packages and application from the builder stage
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /jobflow-api /jobflow-api
+# Copy gunicorn binary specifically
 COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/
 
 # Expose the port your app runs on
 EXPOSE 5001
-
-# Add a health check endpoint
-RUN echo 'from flask import Blueprint\nhealth_blueprint = Blueprint("health", __name__)\n@health_blueprint.route("/health")\ndef health_check():\n    return {"status": "healthy"}, 200' > /jobflow-api/controllers/health.py
-
 # Use Gunicorn to run the app
 CMD ["gunicorn", "--workers", "4", "--timeout", "300", "--bind", "0.0.0.0:5001", "app:app"]

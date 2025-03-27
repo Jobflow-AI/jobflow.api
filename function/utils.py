@@ -41,21 +41,36 @@ def createFile(file, title, company_name, job_link, job_location, job_descriptio
         print("Missing required fields (title, job_link, or job_location). Skipping this job.")
 
 
-def fetch_job_details(job_url):
+def fetch_job_details_linkedin(job_url):
     try:
         response = requests.get(job_url, headers=headers)
         response.raise_for_status()
         job_page = BeautifulSoup(response.text, 'html.parser')
 
-        with open("QJobpage_linkedin.html", "w", encoding="utf-8") as file:
-            file.write(job_page.prettify())
 
         salary_element = job_page.find('div', class_='salary compensation__salary')
         salary = None
         if salary_element:
             salary = salary_element.text.strip()
-                
+            
+        # Legitimate company check
+        company_legit_check = None
+        logo_link = job_page.find("a", {"data-tracking-control-name": "public_jobs_topcard_logo"})
+    
+        if logo_link:
+            logo_img = logo_link.find("img")
+
+            if logo_img and "artdeco-entity-image--ghost" in logo_img.get("class", []):
+                company_legit_check = None
+            else:
+                company_legit_check = "Yes"
+
         job_info = {}
+
+        job_description = None
+        job_description_div = job_page.find("div", class_="description__text")
+        if job_description_div:
+            job_description = job_description_div.get_text(strip=True) if job_description_div else None
 
         for item in job_page.find_all("li", class_="description__job-criteria-item"):
             criterion = item.find("h3", class_="description__job-criteria-subheader").text.strip() 
@@ -64,7 +79,7 @@ def fetch_job_details(job_url):
                 value = None
             job_info[criterion] = value
 
-        return salary, job_info['Seniority level'], job_info['Employment type']
+        return salary, job_info['Seniority level'], job_info['Employment type'], job_description, company_legit_check
 
     except requests.exceptions.RequestException as e:
         print(f"Failed to fetch salary from {job_url}: {e}")

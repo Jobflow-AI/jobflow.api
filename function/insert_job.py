@@ -77,12 +77,12 @@ async def insert_job(job):
 
         # 🔹 Create job document
         job_document = {
-            "title": to_lowercase(job.get('title', 'N/A')),
+            "title": job.get('title', 'N/A'),
             "job_id": job_id,
             "job_link": job.get('job_link', 'N/A'),
-            "job_type": to_lowercase(job.get('job_type', 'N/A')),
-            "apply_link": job.get('apply_link'),
-            "job_location": to_lowercase(job.get('job_location', 'N/A')),
+            "job_type": job.get('job_type', 'N/A'),
+            # "apply_link": job.get('apply_link'),
+            "job_location": job.get('job_location', 'N/A'),
             "salary_min": salary_min,
             "salary_max": salary_max,
             "job_salary": job.get('job_salary'),  
@@ -91,7 +91,7 @@ async def insert_job(job):
             "experience": job.get('experience'),
             "job_description": job.get('job_description'),
             "skills_required": ", ".join(job.get('skills_required', [])) if isinstance(job.get('skills_required'), list) else job.get('skills_required', 'N/A'),
-            "source": to_lowercase(job.get('source', 'N/A')),
+            "source": job.get('source', 'N/A'),
             "source_logo": job.get('source_logo'),
             "posted": posted_date,
             "end_date": end_date,
@@ -102,9 +102,11 @@ async def insert_job(job):
         # Check if the job already exists
         existing_job = await db.job.find_first(where={
             "title": job_document['title'],
-            "companyId": job_document['companyId']
+            "companyId": job_document['companyId'],
+            "status": "active"
         })
         if existing_job:
+            logger.info(f"{job_document['title']} already exists for this company")
             return jsonify({"error": "Job already exists for this company"}), 400  # Return error or handle differently
 
         # Proceed to insert the job if it doesn't exist
