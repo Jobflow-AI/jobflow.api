@@ -63,6 +63,7 @@ model Company {
   company_logo String?
   socials      Json?    // JSON field to store all social media links
   last_job_ids Json?    // Added this for storing job Ids
+  source       String[]
   jobs         Job[]
 
   @@unique([company_name], map: "UniqueCompanyNameConstraint")
@@ -95,4 +96,9 @@ model Job {
   trackedJobs    Tracked_Jobs[]
 
   @@unique([title, job_id, companyId], map: "UniqueJobTitleCompany")
+  @@index([title])          // Index for title searches
+  @@index([job_location])   // Index for location filters
+  @@index([salary_min])     // Index for salary range filters
+  @@index([salary_max])     // Index for salary range filters
+  @@index([status])         // Index for status filters
 }
