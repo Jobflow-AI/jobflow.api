@@ -6,7 +6,7 @@ from utils import serialize_job
 import os
 from function.utils import scrape_job_link
 from function.crawler.job_portals import scrape_ycombinator_jobpage, scrape_linkedin_jobpage
-from function.job_expires.job_expirations import run_job_expiration
+from function.job_expires.job_expirations import expire_sudden_jobs
 from utils.functions import checkExistingJob
 from middleware import protect_routes
 from functools import wraps
@@ -280,9 +280,9 @@ async def get_job_stats():
         
         jobs_by_source = await db.job.group_by(["source"])
         jobs_by_source_dict = {}
-        # for group in jobs_by_source:
-        #     count = await db.job.count(where={"source": group["source"]})
-        #     jobs_by_source_dict[group["source"]] = count
+        for group in jobs_by_source:
+            count = await db.job.count(where={"source": group["source"]})
+            jobs_by_source_dict[group["source"]] = count
         return jsonify({
             'total_jobs': total_jobs,
             'active_jobs': active_jobs,
