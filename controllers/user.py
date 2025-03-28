@@ -1,6 +1,6 @@
 from db.prisma import db
 from flask import jsonify, request, Blueprint, g, send_file
-from utils import serialize_job, extract_text, allowed_file, parse_resume
+from utils import serialize_job, extract_text, allowed_file, parse_resume, process_resume_upload
 from function.insert_job import insert_job
 from datetime import datetime
 import json
@@ -12,7 +12,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from utils.s3_utils import get_put_object_signed_url, get_object_signed_url
 
 user_blueprint = Blueprint('user', __name__)
 
@@ -321,6 +320,8 @@ async def create_job():
 
 @user_blueprint.route('/resume/upload', methods=['POST'])
 async def upload_resume():
+    await db.connect()
+
     if 'resume' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     
@@ -329,18 +330,14 @@ async def upload_resume():
         return jsonify({'error': 'Invalid file type. Only PDF and DOCX are supported.'}), 400
 
     try:
-        # Generate unique file key for S3
-        extension = file.filename.rsplit('.', 1)[1].lower()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        file_key = f"resumes/{g.user.id}/{timestamp}_{file.filename}"
-        
-        # Get presigned URL for upload
-        presigned_url = get_put_object_signed_url({
-            'Bucket': os.getenv('AWS_BUCKET_NAME'),
-            'Key': file_key,
-            'ContentType': f'application/{extension}'
-        })
 
+        extension = file.filename.rsplit('.', 1)[1].lower()
+
+        # Generate S3 URLs using utility function
+        s3_data = process_resume_upload(file, g.user.id)
+
+        print(s3_data, "here is the s3 data")
+        
         # Process file content
         temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(temp_dir, file.filename)
@@ -361,12 +358,19 @@ async def upload_resume():
             
         parsed_data = parse_resume(text)
         
+        # Update user resume URL after successful processing
+        await db.user.update(
+            where={"id": g.user.id},
+            data={"resumeUrl": s3_data['get_url']}
+        )
+
         # Add S3 information to response
         response_data = {
             "success": True,
             "parsed_data": parsed_data,
-            "upload_url": presigned_url,
-            "file_key": file_key
+            "upload_url": s3_data['put_url'],
+            "file_key": s3_data['file_key'],
+            "resume_url": s3_data['get_url']
         }
         
         return jsonify(response_data), 200
@@ -377,6 +381,7 @@ async def upload_resume():
         
     finally:
         # Cleanup temporary files
+        await db.disconnect()
         if 'temp_dir' in locals() and os.path.exists(temp_dir):
             for root, dirs, files in os.walk(temp_dir, topdown=False):
                 for name in files:
@@ -388,41 +393,52 @@ async def upload_resume():
 async def save_resume_data():
     try:
         await db.connect()
-        
-        # Get the current user from the request context
         currentUser = g.user
-        
-        # Get the resume data from the request body
         resume_data = request.get_json()
-        
+
         if not resume_data:
-            return jsonify({"success": False, "error": "No resume data provided"}), 400
+            return jsonify({"error": "No resume data provided"}), 400
+
+        created_sections = []
+        for section_type, section_items in resume_data.items():
+            # Ensure proper list structure for JSON array
+            if not isinstance(section_items, list):
+                section_items = [section_items]
+
+            prisma_content = json.dumps(section_items)
+            existing_section = await db.resumesection.find_first(
+                where={
+                    "userId": currentUser.id,
+                    "sectionType": section_type
+                }
+            )
             
-        # Convert the resume data to a JSON string
-        resume_json_str = json.dumps(resume_data)
-        
-        # Prepare the data for updating the user
-        update_data = {
-            "resume": resume_json_str  # Store the resume as a JSON string
-        }
-        
-        # Update the user with the resume data
-        updated_user = await db.user.update(
-            where={"id": currentUser.id},
-            data=update_data
-        )
-        
-        # Return success response
+            if existing_section:
+                resume_section = await db.resumesection.update(
+                    where={"id": existing_section.id},
+                    data={
+                        "content": prisma_content,
+                        "user": {"connect": {"id": currentUser.id}}
+                    }
+                )
+            else:
+                resume_section = await db.resumesection.create(
+                    data={
+                        "sectionType": section_type,
+                        "content": prisma_content,
+                        "user": {"connect": {"id": currentUser.id}}
+                    }
+                )
+            created_sections.append(resume_section)
+
         return jsonify({
-            "success": True, 
-            "message": "Resume data saved successfully",
-            "user": updated_user.model_dump()
+            "success": True,
+            "sections": [section.model_dump() for section in created_sections]
         }), 200
-        
+
     except Exception as e:
-        print(f"Error saving resume data: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
-        
+        print(f"Error saving resume: {str(e)}")
+        return jsonify({"error": str(e)}), 500
     finally:
         await db.disconnect()
 
