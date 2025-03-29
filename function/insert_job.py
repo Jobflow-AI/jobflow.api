@@ -30,20 +30,11 @@ async def insert_job(job):
                     data={
                         "company_name": company_name,
                         "company_logo": job.get('company_logo'),
-                        "description": job.get('company_desc'),
-                        "source": [job.get('source')] if job.get('source') else []
+                        "description": job.get('company_desc')
                     }
                 )
             except UniqueViolationError:  # Handle race condition where another insert happened
                 company = await db.company.find_unique(where={'company_name': company_name})
-        elif job.get('source'):
-            current_sources = company.source or []
-            if job['source'] not in current_sources:
-                updated_sources = current_sources + [job['source']]
-                company = await db.company.update(
-                    where={'id': company.id},
-                    data={'source': updated_sources}
-                )
 
         # Ensure company exists
         if not company:
