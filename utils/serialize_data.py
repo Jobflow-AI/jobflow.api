@@ -2,14 +2,26 @@ def serialize_job(job):
     return {
         'id': job.id,
         'title': job.title,
+        'job_link': job.job_link,
+        'job_type': job.job_type,
+        'job_id': job.job_id,
+        'job_location': job.job_location,
+        'salary_min': job.salary_min,
+        'salary_max': job.salary_max,
+        'job_salary': job.job_salary,
+        'experience_min': job.experience_min,
+        'experience_max': job.experience_max,
+        'experience': job.experience,
+        'job_description': job.job_description,
+        'skills_required': job.skills_required,
+        'source': job.source,
+        'source_logo': job.source_logo,
+        'posted': job.posted,
+        'end_date': job.end_date,
         'company': {
+            'id': job.company.id,
             'name': job.company.company_name,
             'logo': job.company.company_logo,
-            'description': job.company.description
         },
-        'job_location': job.job_location,
-        'job_type': job.job_type,
-        'job_salary': job.job_salary,
-        'job_link': job.job_link,
-        'source': job.source
+        'status': job.status,
     }

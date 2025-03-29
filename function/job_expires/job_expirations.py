@@ -149,3 +149,24 @@ async def run_job_expiration():
     except Exception as e:
         logger.error(f"Error in run_job_expiration: {str(e)}")
         return 0
+
+
+async def expire_sudden_jobs():
+    """
+    Expire jobs that were reported by user.
+    """
+    try:
+        if not db.is_connected():
+            await db.connect()
+        
+        # Add logic to expire jobs which are reported by user suddenly.
+        # By sending a http request to the jobpage
+        hello =0
+        
+        return 0
+    except Exception as e:
+        logger.error(f"Error in expire_sudden_jobs: {str(e)}")
+        return 0
+    finally:
+        if db.is_connected():
+            await db.disconnect()
