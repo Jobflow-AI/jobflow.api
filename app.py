@@ -13,6 +13,7 @@ from function.job_expires.job_expirations import run_job_expiration
 import logging
 from db.prisma import db, init_db
 import uvicorn
+from contextlib import asynccontextmanager
 
 # Set up logging - MODIFIED FORMAT
 logging.basicConfig(
@@ -22,36 +23,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# FastAPI app setup
-app = FastAPI(title="Jobflow API")
-
-# CORS configuration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Replace "*" with specific domains if needed
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
-
-# Initialize database connection
-@app.on_event("startup")
-async def setup_db():
+# Define lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code (previously in @app.on_event("startup"))
     try:
         await init_db()
         logger.info("Database connection established")
     except Exception as e:
         logger.error(f"Error connecting to database: {str(e)}")
-
-# Clean up database connection when the app is shutting down
-@app.on_event("shutdown")
-async def teardown_db():
+    
+    yield  # This is where the app runs
+    
+    # Shutdown code (previously in @app.on_event("shutdown"))
     if db.is_connected():
         try:
             await db.disconnect()
             logger.info("Database connection closed")
         except Exception as e:
             logger.error(f"Error disconnecting from database: {str(e)}")
+
+# FastAPI app setup with lifespan
+app = FastAPI(title="Jobflow API", lifespan=lifespan)
+
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 # Middleware for logging responses
 @app.middleware("http")
