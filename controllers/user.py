@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict, Any, Union
 from db.prisma import db
 from middleware import get_current_user
-from utils import serialize_job, extract_text, allowed_file, parse_resume
+from utils import serialize_job, extract_text, allowed_file, parse_resume, process_resume_upload
 from function.insert_job import insert_job
 from datetime import datetime
 import json
@@ -16,7 +16,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
-from utils.s3_utils import get_put_object_signed_url, get_object_signed_url
 
 # Define Pydantic models for request/response validation
 class UserUpdateRequest(BaseModel):
@@ -343,13 +342,12 @@ async def upload_resume(
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         file_key = f"resumes/{current_user.id}/{timestamp}_{resume.filename}"
         
-        # Get presigned URL for upload
-        presigned_url = get_put_object_signed_url({
-            'Bucket': os.getenv('AWS_BUCKET_NAME'),
-            'Key': file_key,
-            'ContentType': f'application/{extension}'
-        })
 
+        # Generate S3 URLs using utility function
+        s3_data = process_resume_upload(resume, current_user.id)
+
+        print(s3_data, "here is the s3 data")
+        
         # Process file content
         temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(temp_dir, resume.filename)
@@ -374,12 +372,19 @@ async def upload_resume(
             
         parsed_data = parse_resume(text)
         
+        # Update user resume URL after successful processing
+        await db.user.update(
+            where={"id": g.user.id},
+            data={"resumeUrl": s3_data['get_url']}
+        )
+
         # Add S3 information to response
         response_data = {
             "success": True,
             "parsed_data": parsed_data,
-            "upload_url": presigned_url,
-            "file_key": file_key
+            "upload_url": s3_data['put_url'],
+            "file_key": s3_data['file_key'],
+            "resume_url": s3_data['get_url']
         }
         
         return response_data
@@ -408,17 +413,44 @@ async def save_resume_data(
         if not resume_data:
             raise HTTPException(status_code=400, detail="No resume data provided")
             
-        # Convert the resume data to a JSON string
-        resume_json_str = json.dumps(resume_data)
-        
-        # Update the user with the resume data
-        updated_user = await db.user.update(
-            where={"id": current_user.id},
-            data={"resume": resume_json_str}
-        )
-        
-        return {"success": True, "message": "Resume data saved successfully"}
-        
+
+        created_sections = []
+        for section_type, section_items in resume_data.items():
+            # Ensure proper list structure for JSON array
+            if not isinstance(section_items, list):
+                section_items = [section_items]
+
+            prisma_content = json.dumps(section_items)
+            existing_section = await db.resumesection.find_first(
+                where={
+                    "userId": currentUser.id,
+                    "sectionType": section_type
+                }
+            )
+            
+            if existing_section:
+                resume_section = await db.resumesection.update(
+                    where={"id": existing_section.id},
+                    data={
+                        "content": prisma_content,
+                        "user": {"connect": {"id": currentUser.id}}
+                    }
+                )
+            else:
+                resume_section = await db.resumesection.create(
+                    data={
+                        "sectionType": section_type,
+                        "content": prisma_content,
+                        "user": {"connect": {"id": currentUser.id}}
+                    }
+                )
+            created_sections.append(resume_section)
+
+        return jsonify({
+            "success": True,
+            "sections": [section.model_dump() for section in created_sections]
+        }), 200
+
     except HTTPException:
         raise
     except Exception as e:

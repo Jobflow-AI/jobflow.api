@@ -1,5 +1,5 @@
 import asyncio
-from function.crawler.crawler import scrapejobsdata, scrape_workday_jobs, scrape_linkedin_jobs, scrape_glassdoor_jobs
+from function.crawler.crawler import scrapejobsdata, scrape_workday_jobs, scrape_linkedin_jobs, scrape_glassdoor_jobs, scrape_simplyhired_jobs
 
 searchKeywords = [
     "software developer",
@@ -38,7 +38,14 @@ async def run_crawler():
     # await scrape_glassdoor_jobs()   
     # Daily
     # Todo :- Check & Scrape properly.
-    # - Add all Necessary Keywords
+
+            # - Add all Necessary Keywords
+
+    await scrape_simplyhired_jobs()
+    # Daily
+    # Todo :- Fix posted_date
+    
+    
     
     # for keyword in searchKeywords:
     #     await scrapejobsdata(keyword)
