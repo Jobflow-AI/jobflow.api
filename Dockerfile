@@ -18,7 +18,7 @@ WORKDIR /jobflow-api
 # Copy dependency file and install dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
-    pip install -r requirements.txt && \
+    pip install -r requirements.txt --no-cache-dir && \
     pip install gunicorn  # Add explicit gunicorn installation
 
 # Generate Prisma client (Fixed command)
