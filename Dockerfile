@@ -62,6 +62,6 @@ COPY --from=builder /jobflow-api /jobflow-api
 COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/
 
 # Expose the port your app runs on
-EXPOSE 5001
+EXPOSE 8000
 # Use Gunicorn to run the app
-CMD ["gunicorn", "--workers", "4", "--timeout", "300", "--bind", "0.0.0.0:5001", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "app:app"]

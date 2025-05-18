@@ -1,6 +1,7 @@
 from datetime import datetime
 from db.prisma import db
-from flask import jsonify
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from prisma.errors import UniqueViolationError
 import hashlib
 import logging
@@ -20,7 +21,8 @@ async def insert_job(job):
         company_name = job.get('company_name', '').strip().lower()  # Normalize input
         
         if not company_name:
-            return jsonify({"error": "Company Name is required"}), 400
+            # Return a dictionary instead of using jsonify
+            return {"error": "Company Name is required"}, 400
 
         # Check if company already exists in the database
         company = await db.company.find_unique(where={'company_name': company_name})
@@ -38,7 +40,8 @@ async def insert_job(job):
 
         # Ensure company exists
         if not company:
-            return jsonify({"error": "Failed to create or find company"}), 500
+            # Return a dictionary instead of using jsonify
+            return {"error": "Failed to create or find company"}, 500
 
         salary_min = job.get('salary_min')
         salary_max = job.get('salary_max')
@@ -107,7 +110,8 @@ async def insert_job(job):
         })
         if existing_job:
             logger.info(f"{job_document['title']} already exists for this company")
-            return jsonify({"error": "Job already exists for this company"}), 400  # Return error or handle differently
+            # Return a dictionary instead of using jsonify
+            return {"error": "Job already exists for this company"}, 400
 
         # Proceed to insert the job if it doesn't exist
         job = await db.job.create(data=job_document)

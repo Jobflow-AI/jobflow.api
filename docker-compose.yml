@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5001:5001"
+      - "8000:8000"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - SCRAPER_API=${SCRAPER_API}
@@ -16,7 +16,7 @@ services:
       - AWS_BUCKET_NAME=${AWS_BUCKET_NAME}
     restart: always
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/api"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
       interval: 30s
       timeout: 10s
       retries: 3
