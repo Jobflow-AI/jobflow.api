@@ -30,23 +30,19 @@ async def run_crawler():
     # 20 jobs, 70 Sec => 
     # Todo :- Add more workday links.
 
-
     # LinkedIn
     # await scrape_linkedin_jobs()    
     # Hourly
     # Todo :- Gemini RPM Issue.
 
-
-
     # await scrape_glassdoor_jobs()   
     # Daily
     # Todo :- Check & Scrape properly.
-            # - Add all Necessary Keywords
-    
-    
+    # - Add all Necessary Keywords
     
     # for keyword in searchKeywords:
     #     await scrapejobsdata(keyword)
+    pass
 
 if __name__ == "__main__":
     asyncio.run(run_crawler())

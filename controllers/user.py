@@ -1,5 +1,9 @@
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Response
+from fastapi.responses import JSONResponse, FileResponse
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List, Dict, Any, Union
 from db.prisma import db
-from flask import jsonify, request, Blueprint, g, send_file
+from middleware import get_current_user
 from utils import serialize_job, extract_text, allowed_file, parse_resume
 from function.insert_job import insert_job
 from datetime import datetime
@@ -14,257 +18,263 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from utils.s3_utils import get_put_object_signed_url, get_object_signed_url
 
-user_blueprint = Blueprint('user', __name__)
+# Define Pydantic models for request/response validation
+class UserUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
 
-@user_blueprint.route('/get', methods=['GET'])
-async def get_user():
+class JobStatusUpdate(BaseModel):
+    status: str
+
+class JobTrackRequest(BaseModel):
+    jobId: str
+    status: str
+
+class CreateJobRequest(BaseModel):
+    title: str
+    companyId: Optional[str] = None
+    company_name: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_description: Optional[str] = None
+    job_link: Optional[str] = None
+    job_location: Optional[str] = None
+    job_type: Optional[str] = None
+    job_salary: Optional[str] = None
+    job_description: Optional[str] = None
+    skills_required: Optional[str] = None
+    source: Optional[str] = None
+    source_logo: Optional[str] = None
+    status: Optional[str] = "applied"
+
+# Create router
+user_router = APIRouter()
+
+@user_router.get('/get')
+async def get_user(current_user: dict = Depends(get_current_user)):
     try:
-        await db.connect()
-        currentUser = g.user
-
         # Include job_statuses in the query
         user = await db.user.find_unique(
-            where={"id": currentUser.id},
-            include={'job_statuses': True}  # Add this line
+            where={"id": current_user.id},
+            include={'job_statuses': True}
         )
         
         if not user:
-            return jsonify({"error": "User not exists"}), 400
+            raise HTTPException(status_code=400, detail="User does not exist")
         
         user_dict = user.model_dump() 
-        return jsonify({"success": True, "user": user_dict}), 200
+        return {"success": True, "user": user_dict}
 
     except Exception as e:
         print(e, "here is the error")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@user_blueprint.route('/update', methods=['PUT'])
-async def update_user():
+@user_router.put('/update')
+async def update_user(
+    update_data: UserUpdateRequest,
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-        currentUser = g.user
-        user = await db.user.find_unique(where={"id": currentUser.id})
+        user = await db.user.find_unique(where={"id": current_user.id})
         if not user:
-            return jsonify({"error": "User does not exist"}), 400
+            raise HTTPException(status_code=400, detail="User does not exist")
 
-        body_data = request.get_json()
-        update_data = {}
+        # Convert Pydantic model to dict and remove None values
+        update_dict = update_data.model_dump(exclude_unset=True, exclude_none=True)
+        
+        if not update_dict:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
 
-        # Keep only name and email updates
-        if 'name' in body_data and body_data['name']:
-            update_data['name'] = body_data['name']
-        if 'email' in body_data and body_data['email']:
-            update_data['email'] = body_data['email']
+        updated_user = await db.user.update(
+            where={"id": current_user.id},
+            data=update_dict
+        )
+        
+        return {"success": True, "user": updated_user.model_dump()}
 
-        if update_data: 
-            updated_user = await db.user.update(
-                where={"id": currentUser.id},
-                data=update_data
-            )
-            return jsonify({"success": True, "user": updated_user.model_dump()}), 200
-        else:
-            return jsonify({"error": "No valid fields to update"}), 400
-
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Update error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
-    finally:
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@user_blueprint.route('/jobs/get', methods=['GET'])
-async def get_user_jobs():
+@user_router.get('/jobs/get')
+async def get_user_jobs(
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-
-        # Get user ID from the request context
-        userId = g.user.id
-        user = await db.user.find_unique(where={"id": userId})
+        user = await db.user.find_unique(where={"id": current_user.id})
         if not user:
-            return jsonify({"success": False, "error": "User not exists"}), 404
+            raise HTTPException(status_code=404, detail="User does not exist")
 
-        # Get status from query parameters
-        status = request.args.get('status', default='', type=str)
         print(f"Filtering jobs with status: {status}")
+
+        # Build query conditions
+        where_condition = {"userId": user.id}
+        if status:
+            where_condition["status"] = status
 
         # Fetch user's applied jobs
         userAppliedJobs = await db.tracked_jobs.find_many(
-            where={"userId": user.id},
+            where=where_condition,
             include={
                 'job': {
                     'include': {
-                        'company': True  # Add company relation
+                        'company': True
                     }
                 }
             }
         )
+        
         jobs_serialized = [job.model_dump() for job in userAppliedJobs]
         print(jobs_serialized, "here are the jobs")
-        return jsonify({"success": True, "jobs": jobs_serialized}), 200
+        return {"success": True, "jobs": jobs_serialized}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-    finally:
-        print("Disconnecting from the database...")
-        await db.disconnect()
-        print("Disconnected from the database.")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-
-@user_blueprint.route('/job/track', methods=['POST'])
-async def track_job():
+@user_router.post('/job/track')
+async def track_job(
+    jobId: str = Query(..., description="Job ID to track"),
+    status: str = Query(..., description="Job status"),
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-
-        # Find the job by its ID
-        jobId = request.args.get('jobId', default=None, type=str)
-        if not jobId:
-            return jsonify({"success": False, "error": "JobId is missing"}), 400
-
-        status = request.args.get('status', default=None, type=str)
-        if not status:
-            return jsonify({"success": False, "error": "Status is missing"}), 400
-
         # Validate status against JobStatus enum
         if status.upper() not in ['APPLIED', 'ACCEPTED', 'REJECTED']:
-            return jsonify({"success": False, "error": "Invalid job status"}), 400
+            raise HTTPException(status_code=400, detail="Invalid job status")
 
         job = await db.job.find_unique(where={"id": jobId})
         if not job:
-            return jsonify({"success": False, "error": "Job does not exist"}), 404
-
-        # Get the current user from the request context
-        currentUser = g.user
+            raise HTTPException(status_code=404, detail="Job does not exist")
 
         print(jobId, status, "here are jobid and status")
 
         # Check existing tracking
         existing_tracking = await db.tracked_jobs.find_first(
             where={
-                "userId": currentUser.id,
+                "userId": current_user.id,
                 "jobId": jobId
             }
         )
         
         if existing_tracking:
-            return jsonify({"success": False, "error": "Job already tracked"}), 400
+            raise HTTPException(status_code=400, detail="Job already tracked")
 
         # Create tracking entry with proper enum value
         await db.tracked_jobs.create(
             data={
-                "userId": currentUser.id,
-                "jobId": jobId,  # Proper relation syntax
+                "userId": current_user.id,
+                "jobId": jobId,
                 "status": status.upper(),
-                # appliedDate is now handled by the schema default
             }
         )
 
-        return jsonify({"success": True, "message": "Job tracked successfully"}), 200
+        return {"success": True, "message": "Job tracked successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(e, "here is the error")
-        return jsonify({"success": False, "error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-    finally:
-        await db.disconnect()
 
-@user_blueprint.route('/job/update/status', methods=['PUT'])
-async def update_job_status():
-
+@user_router.put('/job/update/status')
+async def update_job_status(
+    jobId: str = Query(..., description="Job ID to update"),
+    status: str = Query(..., description="New job status"),
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-        jobId = request.args.get('jobId', default=None, type=str)
-        status = request.args.get('status', default=None, type=str)
-
         print(jobId, status, "here are jobid and status")
 
-        if not jobId or not status:
-            return jsonify({"success": False, "error": "JobId or Status is"}), 400
-
+        applied_job = await db.tracked_jobs.find_unique(
+            where={"userId": current_user.id, "id": jobId}
+        )
         
-        # Get the current user from the request context
-        currentUser = g.user
-        applied_job = await db.tracked_jobs.find_unique(where={"userId": currentUser.id, "id": jobId})
         if not applied_job:
-            return jsonify({"success": False, "error": "Applied Job not exists"}), 400
+            raise HTTPException(status_code=400, detail="Applied Job not exists")
         
-        # Update the user to connect the job
+        # Update the job status
         await db.tracked_jobs.update(
-            where={"userId": currentUser.id, "id": jobId},
+            where={"userId": current_user.id, "id": jobId},
+            data={"status": status}
+        )
+        
+        return {"success": True, "message": "Job status updated successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(e, "here is the error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@user_router.post('/job/bookmark')
+async def bookmark_job(
+    jobId: str = Query(..., description="Job ID to bookmark"),
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Find the job by its ID
+        job = await db.job.find_unique(where={"id": jobId})
+        if not job:
+            raise HTTPException(status_code=404, detail="Job does not exist")
+        
+        user = await db.user.find_unique(where={"id": current_user.id})
+        if not user:
+            raise HTTPException(status_code=400, detail="User does not exist")
+        
+        await db.user.update(
+            where={"id": current_user.id},
             data={
-                "status": status
+                "bookmarked_jobs": {
+                    "push": jobId  # Use 'push' to add the jobId to the array
+                }
             }
         )
         
-        return jsonify({"success": True, "message": "Job saved to user"}), 200
+        return {"success": True, "message": "Job bookmarked successfully"}
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(e, "here is the error")  # Output the error to the console for debugging
-        return jsonify({"success": False, "error": str(e)}), 500
-
-    finally:
-        await db.disconnect()
+        print(e, "here is the error")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@user_blueprint.route('/job/bookmark', methods=['POST'])
-async def bookmark_job():
-
-    jobId = request.args.get('jobId', default=None, type=str)
-    if not job:
-        return jsonify({"success": False, "error": "Job not exists"}), 400
-
-    # Find the job by its ID
-    job = await db.job.find_unique(where={"id": jobId})
-    if not job:
-        return jsonify({"success": False, "error": "Job not exists"}), 404
-    
-    # Get the current user from the request context
-    currentUser = g.user
-    user = await db.user.find_unique(where={"id": currentUser.id})
-    if not user:
-        return jsonify({"success": False, "message": "User not exists"}), 400
-    
-    await db.user.update(
-        where={"id": currentUser.id},
-        data={
-            "bookmarked_jobs": {
-                "push": jobId  # Use 'push' to add the jobId to the array
-            }
-        }
-    )
-    
-    return jsonify({"success": True, "message": "Job saved to user"}), 200
-
-@user_blueprint.route('/job/create', methods=['POST'])
-async def create_job():
+@user_router.post('/job/create')
+async def create_job(
+    job_data: CreateJobRequest,
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-        body_data = request.get_json()
-        print(body_data, "here is the body data")
+        print(job_data, "here is the body data")
 
         # Fetch the current user
-        currentUser = g.user
-        user = await db.user.find_unique(where={"id": currentUser.id})
+        user = await db.user.find_unique(where={"id": current_user.id})
         if not user:
-            return jsonify({"success": False, "message": "User does not exist"}), 400
+            raise HTTPException(status_code=400, detail="User does not exist")
 
         # Prepare fields with validation
-        title = body_data.get('title').lower() if body_data.get('title') else None
-        company_id = body_data.get('companyId')  # Optional
-        company_name = body_data.get('company_name')  # Optional
-        company_logo = body_data.get('company_logo') 
+        title = job_data.title.lower() if job_data.title else None
+        company_id = job_data.companyId
+        company_name = job_data.company_name
+        company_logo = job_data.company_logo
 
         if not title:
-            return jsonify({"success": False, "message": "Job title is required"}), 400
+            raise HTTPException(status_code=400, detail="Job title is required")
 
         # Handle company logic
         if not company_id:
             if not company_name:
-                return jsonify({"success": False, "message": "Either companyId or company_name is required"}), 400
+                raise HTTPException(status_code=400, detail="Either companyId or company_name is required")
 
             # Check if the company exists
             company = await db.company.find_unique(where={"company_name": company_name.lower()})
@@ -273,7 +283,7 @@ async def create_job():
                 company_data = {
                     "company_name": company_name.lower(),
                     "company_logo": company_logo,
-                    "description": body_data.get("company_description"),
+                    "description": job_data.company_description,
                 }
                 company = await db.company.create(data=company_data)
                 print(company, "New company created")
@@ -286,53 +296,52 @@ async def create_job():
             where={
                 "title": title,
                 "companyId": company_id,
-                "userId": currentUser.id,
+                "userId": current_user.id,
             }
         )
+        
         if existing_job:
-            return jsonify({"success": False, "message": "Duplicate job entry exists"}), 400
+            raise HTTPException(status_code=400, detail="Duplicate job entry exists")
 
         # Create a tracked job entry
-        await db.tracked_jobs.create(
-            data={
-                "userId": currentUser.id,
-                "title": title,
-                "job_link": body_data.get('job_link'),
-                "companyId": company_id,
-                "job_location": body_data.get('job_location'),
-                "job_type": body_data.get('job_type'),
-                "job_salary": body_data.get('job_salary'),
-                "job_description": body_data.get('job_description'),
-                "skills_required": body_data.get('skills_required'),
-                "source": body_data.get('source'),
-                "source_logo": body_data.get('source_logo'),
-                "status": body_data.get('status', "applied"),
-            }
-        )
-        return jsonify({"success": True, "message": "Job saved to user"}), 200
+        job_create_data = {
+            "userId": current_user.id,
+            "title": title,
+            "companyId": company_id,
+            "status": job_data.status,
+        }
+        
+        # Add optional fields if they exist
+        for field in ["job_link", "job_location", "job_type", "job_salary", 
+                     "job_description", "skills_required", "source", "source_logo"]:
+            value = getattr(job_data, field, None)
+            if value is not None:
+                job_create_data[field] = value
+                
+        await db.tracked_jobs.create(data=job_create_data)
+        
+        return {"success": True, "message": "Job saved successfully"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(e, "here is the error")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-    finally:
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@user_blueprint.route('/resume/upload', methods=['POST'])
-async def upload_resume():
-    if 'resume' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    
-    file = request.files['resume']
-    if file.filename == '' or not allowed_file(file.filename):
-        return jsonify({'error': 'Invalid file type. Only PDF and DOCX are supported.'}), 400
+@user_router.post('/resume/upload')
+async def upload_resume(
+    resume: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    if not allowed_file(resume.filename):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and DOCX are supported.")
 
     try:
         # Generate unique file key for S3
-        extension = file.filename.rsplit('.', 1)[1].lower()
+        extension = resume.filename.rsplit('.', 1)[1].lower()
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        file_key = f"resumes/{g.user.id}/{timestamp}_{file.filename}"
+        file_key = f"resumes/{current_user.id}/{timestamp}_{resume.filename}"
         
         # Get presigned URL for upload
         presigned_url = get_put_object_signed_url({
@@ -343,8 +352,12 @@ async def upload_resume():
 
         # Process file content
         temp_dir = tempfile.mkdtemp()
-        temp_path = os.path.join(temp_dir, file.filename)
-        file.save(temp_path)
+        temp_path = os.path.join(temp_dir, resume.filename)
+        
+        # Save uploaded file to temp location
+        with open(temp_path, "wb") as buffer:
+            content = await resume.read()
+            buffer.write(content)
         
         # Validate PDF if applicable
         if extension == 'pdf':
@@ -352,12 +365,12 @@ async def upload_resume():
                 doc = fitz.open(temp_path)
                 doc.close()
             except Exception as e:
-                return jsonify({'error': f'Invalid or corrupted PDF file: {str(e)}'}), 400
+                raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF file: {str(e)}")
         
         # Extract and parse text
         text = extract_text(temp_path, extension)
         if not text:
-            return jsonify({'error': 'Could not extract text from the file'}), 400
+            raise HTTPException(status_code=400, detail="Could not extract text from the file")
             
         parsed_data = parse_resume(text)
         
@@ -369,11 +382,13 @@ async def upload_resume():
             "file_key": file_key
         }
         
-        return jsonify(response_data), 200
+        return response_data
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Resume upload error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
         
     finally:
         # Cleanup temporary files
@@ -384,67 +399,46 @@ async def upload_resume():
                 os.rmdir(root)
 
 
-@user_blueprint.route('/info/update', methods=['POST'])
-async def save_resume_data():
+@user_router.post('/info/update')
+async def save_resume_data(
+    resume_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-        
-        # Get the current user from the request context
-        currentUser = g.user
-        
-        # Get the resume data from the request body
-        resume_data = request.get_json()
-        
         if not resume_data:
-            return jsonify({"success": False, "error": "No resume data provided"}), 400
+            raise HTTPException(status_code=400, detail="No resume data provided")
             
         # Convert the resume data to a JSON string
         resume_json_str = json.dumps(resume_data)
         
-        # Prepare the data for updating the user
-        update_data = {
-            "resume": resume_json_str  # Store the resume as a JSON string
-        }
-        
         # Update the user with the resume data
         updated_user = await db.user.update(
-            where={"id": currentUser.id},
-            data=update_data
+            where={"id": current_user.id},
+            data={"resume": resume_json_str}
         )
         
-        # Return success response
-        return jsonify({
-            "success": True, 
-            "message": "Resume data saved successfully",
-            "user": updated_user.model_dump()
-        }), 200
+        return {"success": True, "message": "Resume data saved successfully"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error saving resume data: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
-        
-    finally:
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@user_blueprint.route('/resume/generate', methods=['POST'])
-async def generate_custom_resume():
+@user_router.post('/resume/generate')
+async def generate_custom_resume(
+    jobId: str = Query(..., description="Job ID to generate resume for"),
+    current_user: dict = Depends(get_current_user)
+):
     try:
-        await db.connect()
-        
         # Get job ID from request and clean it
-        job_id = request.args.get('jobId', '').strip('"')  # Remove any quotes
-        if not job_id:
-            return jsonify({"success": False, "error": "Job ID is required"}), 400
+        job_id = jobId.strip('"')  # Remove any quotes
             
-        # Get current user
-        current_user = g.user
-        print(current_user, "here is the curren user")
-        
         # Get user's resume data
         user = await db.user.find_unique(where={"id": current_user.id})
         if not user or not user.resume:
-            return jsonify({"success": False, "error": "User resume not found"}), 404
+            raise HTTPException(status_code=404, detail="User resume not found")
             
         # Get job data
         job = await db.job.find_unique(
@@ -459,7 +453,7 @@ async def generate_custom_resume():
                 include={"company": True}
             )
             if not tracked_job:
-                return jsonify({"success": False, "error": "Job not found"}), 404
+                raise HTTPException(status_code=404, detail="Job not found")
             job = tracked_job
         
         # Parse resume data
@@ -484,23 +478,167 @@ async def generate_custom_resume():
         pdf_path = create_resume_pdf(tailored_resume, job_data["company"])
         
         # Return the PDF file
-        return send_file(
-            pdf_path,
-            as_attachment=True,
-            download_name=f"Resume_for_{job_data['company']}_{job_data['title']}.pdf",
-            mimetype='application/pdf'
+        return FileResponse(
+            path=pdf_path,
+            filename=f"Resume_for_{job_data['company']}_{job_data['title']}.pdf",
+            media_type='application/pdf'
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error generating resume: {str(e)}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
         
     finally:
-        await db.disconnect()
         # Clean up temporary files if needed
         if 'pdf_path' in locals() and os.path.exists(pdf_path):
             os.remove(pdf_path)
 
+
+@user_router.post('/jobstatus/add')
+async def add_job_status(
+    status_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Validate input and process label
+        if 'label' not in status_data or not status_data['label']:
+            raise HTTPException(status_code=400, detail="Label is required")
+        
+        label = status_data['label'].strip().upper()  # Convert to uppercase and trim whitespace
+
+        # Check for existing status with same label (case-insensitive)
+        existing_status = await db.job_statuses.find_first(
+            where={
+                "userId": current_user.id,
+                "label": label  # Now checking uppercase version
+            }
+        )
+
+        if existing_status:
+            # Update existing status
+            updated_status = await db.job_statuses.update(
+                where={"id": existing_status.id},
+                data={
+                    "value": status_data.get('value', existing_status.value)
+                }
+            )
+            return {
+                "success": True,
+                "status": updated_status.model_dump(),
+                "message": "Status updated"
+            }
+        else:
+            # Create new status with uppercase label
+            new_status = await db.job_statuses.create(
+                data={
+                    "user": {"connect": {"id": current_user.id}},
+                    "label": label,  # Store in uppercase
+                    "value": status_data.get('value', 0)
+                }
+            )
+            return {
+                "success": True,
+                "status": new_status.model_dump(),
+                "message": "Status created"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error adding/updating job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@user_router.put('/jobstatus/update/{status_id}')
+async def update_jobstatuses(
+    status_id: str,
+    status_data: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Verify status exists and belongs to user
+        status = await db.job_statuses.find_unique(
+            where={"id": status_id}
+        )
+        if not status:
+            raise HTTPException(status_code=404, detail="Status not found")
+        if status.userId != current_user.id:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+
+        update_data = {}
+        if 'label' in status_data and status_data['label']:
+            label = status_data['label'].strip().upper()  # Convert to uppercase
+            # Check for existing status with new label
+            existing = await db.job_statuses.find_first(
+                where={
+                    "userId": current_user.id,
+                    "label": label,  # Check uppercase version
+                    "id": {"not": status_id}
+                }
+            )
+            if existing:
+                raise HTTPException(status_code=400, detail="Status label already exists")
+            update_data['label'] = label  # Store uppercase
+            
+        if 'value' in status_data:
+            update_data['value'] = status_data['value']
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No valid fields to update")
+
+        updated_status = await db.job_statuses.update(
+            where={"id": status_id},
+            data=update_data
+        )
+        
+        return {
+            "success": True,
+            "status": updated_status.model_dump(),
+            "message": "Status updated successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@user_router.delete('/jobstatus/delete/{status_id}')
+async def delete_job_status(
+    status_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        # Verify status exists and belongs to user
+        status = await db.job_statuses.find_unique(
+            where={"id": status_id}
+        )
+        
+        if not status:
+            raise HTTPException(status_code=404, detail="Status not found")
+            
+        if status.userId != current_user.id:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+
+        # Delete the status
+        await db.job_statuses.delete(where={"id": status_id})
+        
+        return {
+            "success": True,
+            "message": "Status deleted successfully"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting job status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Keep the helper functions as they are
 async def generate_tailored_resume(resume_data, job_data):
     """Generate a tailored resume using Gemini API"""
     # Configure Gemini API
@@ -592,7 +730,7 @@ async def generate_tailored_resume(resume_data, job_data):
         }
 
 def create_resume_pdf(resume_data, company_name):
-    """Create a PDF resume from the tailored resume data using HTML template"""
+    # Keep the existing implementation
     try:
         from xhtml2pdf import pisa
         from jinja2 import Template
@@ -761,7 +899,7 @@ def create_resume_pdf(resume_data, company_name):
     return temp_file.name
 
 
-@user_blueprint.route('/jobstatus/add', methods=['POST'])
+@user_router.post('/jobstatus/add')
 async def add_job_status():
     try:
         await db.connect()
@@ -814,7 +952,7 @@ async def add_job_status():
     finally:
         await db.disconnect()
 
-@user_blueprint.route('/jobstatus/update/<string:status_id>', methods=['PUT'])
+@user_router.put('/jobstatus/update/<string:status_id>')
 async def update_jobstatuses(status_id):
     try:
         await db.connect()
@@ -869,7 +1007,7 @@ async def update_jobstatuses(status_id):
         await db.disconnect()
 
 
-@user_blueprint.route('/jobstatus/delete/<string:status_id>', methods=['DELETE'])
+@user_router.delete('/jobstatus/delete/<string:status_id>')
 async def delete_job_status(status_id):
     try:
         await db.connect()

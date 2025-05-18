@@ -1,101 +1,67 @@
-from flask import Blueprint, request, jsonify
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any
+from db.prisma import db
+from middleware import get_current_user
 from function.crawler.crawler import scrapejobsdata
 from function.crawler.run_crawler import run_crawler
-from db.prisma import db
 from utils import serialize_job
 import os
 from function.utils import scrape_job_link
 from function.crawler.job_portals import scrape_ycombinator_jobpage, scrape_linkedin_jobpage
 from function.job_expires.job_expirations import run_job_expiration
 from utils.functions import checkExistingJob
-from middleware import protect_routes
-from functools import wraps
 from datetime import datetime, timedelta
 
-scraperapi_key = os.getenv('SCRAPER_API')
+# Router
+job_router = APIRouter()
 
-headers = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-}
-
-job_blueprint = Blueprint('job', __name__)
-
-# Create a decorator for protecting specific routes
-def protect_route():
-    def decorator(f):
-        @wraps(f)
-        async def decorated_function(*args, **kwargs):
-            protection_result = await protect_routes()
-            if protection_result:
-                return protection_result
-            return await f(*args, **kwargs)
-        return decorated_function
-    return decorator
-
-@job_blueprint.route('/', methods=['GET'])
-async def create_jobs():   
+@job_router.get('/')
+async def create_jobs():
     try:
-        if not db.is_connected():
-            await db.connect()
         await run_crawler()
-        return "Successfully inserted job", 201
-    
+        return "Successfully inserted job"
     except Exception as e:
-        print(e, "Error in create_jobs function")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
-@job_blueprint.route('/get', methods=['GET'])
-async def get_job():   
+@job_router.get('/get')
+async def get_job(
+    page: int = Query(1, ge=1),
+    portal: Optional[str] = None,
+    title: Optional[str] = None
+):
     try:
-        if not db.is_connected():
-            await db.connect()
-
-        page = request.args.get('page', default=1, type=int)
-        source = request.args.get('portal', default=None, type=str)
-        title = request.args.get('title', default=None, type=str)
-
-        if page < 1:
-            return jsonify({'error': "Page must be a positive number"}), 400
-        
         page_size = 10
         skip = (page - 1) * page_size
 
-        filter = {}
-        if source: 
-            filter['source'] = source
+        filter_conditions = {}
+        if portal: 
+            filter_conditions['source'] = portal
         if title:
-            filter['title'] = {"contains": title}
+            filter_conditions['title'] = {"contains": title}
 
         # Fetch jobs from the database including the company relation
         jobs = await db.job.find_many(
-            where=filter,
+            where=filter_conditions,
             skip=skip,
             take=page_size,
-            include={'company': True}  # Include the company relation
+            include={'company': True}
         )
 
         # Serialize the job data
         serialized_jobs = [job.model_dump() for job in jobs]
 
-        return jsonify({'jobs': serialized_jobs, 'page': page, 'page_size': page_size}), 200
+        return {'jobs': serialized_jobs, 'page': page, 'page_size': page_size}
 
     except Exception as e:
-        print(e, "here is the error inside get")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
-    
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
+        raise HTTPException(status_code=500, detail=str(e))
 
-
-@job_blueprint.route('/get/id', methods=['GET'])
+@job_router.get('/get/id')
 async def getJobId():   
     try:
-        if not db.is_connected():
-            await db.connect()
+        # if not db.is_connected():
+        #     await db.connect()
 
         jobId = request.args.get('jobId', default=1, type=int)
 
@@ -113,15 +79,14 @@ async def getJobId():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
+    # finally:
+    #     # Disconnect Prisma client
+    #     await db.disconnect()
 
-@job_blueprint.route('/get/company/list', methods=['GET'])
+@job_router.get('/get/company/list')
 async def get_companies_list():   
     try:
-        if not db.is_connected():
-            await db.connect()
+        # Remove the db connection check and connect call
 
         # Fetch jobs from the database including the company relation
         companies = await db.company.find_many()
@@ -133,13 +98,10 @@ async def get_companies_list():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
+    # Remove the finally block with db.disconnect()
 
 
-@job_blueprint.route('/scrape', methods=['GET'])
-@protect_route()
+@job_router.get('/scrape')
 async def scrape_job():   
     try:
         portal = request.args.get("portal", default='', type=str) 
@@ -188,13 +150,11 @@ async def scrape_job():
         print(e, "here is the error")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
 
-@job_blueprint.route('/expire', methods=['GET'])
+@job_router.get('/expire')
 # @protect_route()
 async def expire_jobs():   
     try:
-        
-        if not db.is_connected():
-            await db.connect()
+        # Remove the db connection check and connect call
             
         print("Running scheduled job expiration")
         # Run the job expiration process
@@ -210,14 +170,12 @@ async def expire_jobs():
         print(f"Error in expire_jobs function: {e}")  # Output the error to the console for debugging
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        await db.disconnect()
+    # Remove the finally block with db.disconnect()
 
-@job_blueprint.route('/stats', methods=['GET'])
+@job_router.get('/stats')
 async def get_job_stats():   
     try:
-        if not db.is_connected():
-            await db.connect()
+        # Remove the db connection check and connect call
             
         # Get total jobs
         total_jobs = await db.job.count()
@@ -260,5 +218,4 @@ async def get_job_stats():
         print(f"Error in get_job_stats: {e}")
         return jsonify({'error': str(e)}), 500
     
-    finally:
-        await db.disconnect()
+    # Remove the finally block with db.disconnect()

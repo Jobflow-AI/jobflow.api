@@ -1,4 +1,3 @@
-import fitz  # PyMuPDF
 import google.generativeai as genai
 import json
 import pdfplumber
@@ -22,16 +21,7 @@ def extract_text(file_path, extension):
                 return '\n'.join([page.extract_text() or "" for page in pdf.pages])
         except Exception as e:
             print(f"Error extracting text from PDF: {str(e)}")
-            # Try alternative PDF extraction method with PyMuPDF
-            try:
-                doc = fitz.open(file_path)
-                text = ""
-                for page in doc:
-                    text += page.get_text()
-                return text
-            except Exception as e2:
-                print(f"Alternative PDF extraction also failed: {str(e2)}")
-                return ""
+            return ""
     elif extension == 'docx':
         try:
             from docx import Document

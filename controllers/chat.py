@@ -1,11 +1,23 @@
-from flask import request, jsonify, Blueprint
+from fastapi import APIRouter, Request, Depends, Query, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Optional, List, Dict, Any, Union
 import google.generativeai as genai
 import os
 import aiohttp
 import json
-from db.prisma import db  # Adding the missing import
+from db.prisma import db
 
-chat_blueprint = Blueprint('chat', __name__)
+# Define Pydantic models for request validation
+class QuestionRequest(BaseModel):
+    question: str
+
+# Create router
+chat_router = APIRouter()
+
+# Configure Gemini API
+gemini_key = os.getenv('GOOGLE_API_KEY')
+genai.configure(api_key=gemini_key)
 
 # Mock response for testing purposes
 MOCK_RESPONSE = """
@@ -31,34 +43,70 @@ MOCK_RESPONSE = """
 """
 
 # Change the route to match what the frontend is calling
-@chat_blueprint.route('', methods=['POST'])
-async def search_jobs():
-        
+@chat_router.post('')
+async def search_jobs(
+    request: Request,
+    data: QuestionRequest,
+    page: int = Query(1, description="Page number"),
+    page_size: int = Query(10, description="Items per page"),
+    mock: bool = Query(False, description="Use mock data for testing")
+):
     try:
-        if not db.is_connected():
-            await db.connect()
-            
-        # Get the user's query from the request
-        data = request.get_json()
-        if not data or 'question' not in data:
-            return jsonify({'error': 'Please provide a question in the request body'}), 400
-            
-        user_query = data['question']
+        user_query = data.question
         
         # For testing: Use mock data instead of calling the API
-        use_mock = request.args.get('mock', default='true', type=str).lower() == 'true'
-        
-        if use_mock:
+        if mock:
             print("Using mock data for testing")
             chat_response = MOCK_RESPONSE
         else:
-            # Call the chat API to get structured search parameters
-            async with aiohttp.ClientSession() as session:
-                async with session.post('http://13.43.231.1/generate', json={'question': user_query}) as response:
-                    if response.status != 200:
-                        return jsonify({'error': 'Failed to process your query'}), 500
-                        
-                    chat_response = await response.text()
+            # Use Gemini API to process the query
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            
+            # Create a prompt based on the job_dataset.json examples
+            prompt = f"""
+            You are a job search assistant that converts natural language queries into structured search parameters.
+            
+            Given a user's job search query, extract the relevant search parameters and format them as a JSON object.
+            
+            The JSON should follow this structure:
+            {{
+                "title": [list of job titles] or null,
+                "job_type": [list of job types (full-time, part-time, contract, etc.)] or null,
+                "job_location": [list of locations] or null,
+                "salary_min": minimum salary (number) or null,
+                "salary_max": maximum salary (number) or null,
+                "experience_min": minimum years of experience (number) or null,
+                "experience_max": maximum years of experience (number) or null,
+                "job_description": [list of description keywords] or null,
+                "skills_required": [list of required skills] or null,
+                "source": [list of job sources/portals] or null,
+                "posted": posting timeframe (string) or null,
+                "company": [list of company names] or null,
+                "industry": industry sector (string) or null
+            }}
+            
+            For each field:
+            - If the user doesn't specify a value, set it to null
+            - For list fields, if only one value is specified, still use a list format
+            - Convert numeric values to numbers (not strings)
+            
+            User query: {user_query}
+            
+            First, analyze the query step by step:
+            Step 1: Analyze the query.
+            Step 2: Extract the variables.
+            Step 3: Set unspecified fields to null.
+            Step 4: Generate the structured query in JSON format.
+            
+            Format your response as:
+            ### Response:
+            {{
+                // The structured JSON object
+            }}
+            """
+            
+            response = await model.generate_content_async(prompt)
+            chat_response = response.text
         
         # Extract the JSON part from the response
         try:
@@ -66,20 +114,16 @@ async def search_jobs():
             json_start = chat_response.find('{')
             json_end = chat_response.rfind('}') + 1
             if json_start == -1 or json_end == 0:
-                return jsonify({'error': 'Invalid response format from chat API'}), 500
+                raise HTTPException(status_code=500, detail="Invalid response format from chat API")
                 
             json_str = chat_response[json_start:json_end]
             search_params = json.loads(json_str)
         except Exception as e:
             print(f"Error parsing JSON from chat API: {e}")
-            return jsonify({'error': 'Failed to parse search parameters'}), 500
-        
-        # Get pagination parameters
-        page = request.args.get('page', default=1, type=int)
-        page_size = request.args.get('page_size', default=10, type=int)
+            raise HTTPException(status_code=500, detail="Failed to parse search parameters")
         
         if page < 1:
-            return jsonify({'error': "Page must be a positive number"}), 400
+            raise HTTPException(status_code=400, detail="Page must be a positive number")
             
         skip = (page - 1) * page_size
         
@@ -273,32 +317,35 @@ async def search_jobs():
             take=page_size,
             include={'company': True}
         )
+
+        # print(jobs, "jobs are")
         
         # Get total count for pagination
         total_count = await db.job.count(where=filter_conditions)
         
         # Serialize the job data
         serialized_jobs = [job.model_dump() for job in jobs]
+        print(serialized_jobs, "serialized jobs are")
         
-        return jsonify({
+        # Return a dictionary directly instead of using jsonify
+        return {
             'jobs': serialized_jobs, 
             'page': page, 
             'page_size': page_size,
             'total': total_count,
             'total_pages': (total_count + page_size - 1) // page_size,
             'search_params': search_params
-        }), 200
+        }
         
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in search_jobs: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
     
-    finally:
-        # Disconnect Prisma client
-        await db.disconnect()
 
 # Add a test endpoint to verify the mock data parsing
-@chat_blueprint.route('/test', methods=['GET'])
+@chat_router.get('/test')
 async def test_parsing():
     try:
         # Parse the mock response
@@ -307,12 +354,9 @@ async def test_parsing():
         json_str = MOCK_RESPONSE[json_start:json_end]
         search_params = json.loads(json_str)
         
-        return jsonify({
+        return {
             'success': True,
             'parsed_data': search_params
-        }), 200
+        }
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'error': str(e)
-        }), 500
+        raise HTTPException(status_code=500, detail=str(e))

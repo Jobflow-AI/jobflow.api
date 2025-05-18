@@ -1,10 +1,9 @@
-from flask import Flask, request
-from controllers.auth import auth_blueprint
-from controllers.job import job_blueprint
-from controllers.user import user_blueprint
-from controllers.chat import chat_blueprint
-from flask_cors import CORS
-from middleware import protect_routes  
+from fastapi import FastAPI, Request, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from controllers.auth import auth_router
+from controllers.job import job_router
+from controllers.user import user_router
+from controllers.chat import chat_router
 import asyncio
 import pycron
 import threading
@@ -12,6 +11,8 @@ import time
 from datetime import datetime
 from function.job_expires.job_expirations import run_job_expiration
 import logging
+from db.prisma import db, init_db
+import uvicorn
 
 # Set up logging - MODIFIED FORMAT
 logging.basicConfig(
@@ -21,56 +22,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Flask app setup with custom handler - SIMPLIFIED FORMAT
-app = Flask(__name__)
-app.logger.propagate = False  # Prevent duplicate logs
-handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter(
-    '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-))
-app.logger.addHandler(handler)
+# FastAPI app setup
+app = FastAPI(title="Jobflow API")
 
-# Enable Flask's built-in logging
-app.logger.setLevel(logging.DEBUG)
+# CORS configuration
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Replace "*" with specific domains if needed
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
-@app.after_request
-def log_response_info(response):
+# Initialize database connection
+@app.on_event("startup")
+async def setup_db():
+    try:
+        await init_db()
+        logger.info("Database connection established")
+    except Exception as e:
+        logger.error(f"Error connecting to database: {str(e)}")
+
+# Clean up database connection when the app is shutting down
+@app.on_event("shutdown")
+async def teardown_db():
+    if db.is_connected():
+        try:
+            await db.disconnect()
+            logger.info("Database connection closed")
+        except Exception as e:
+            logger.error(f"Error disconnecting from database: {str(e)}")
+
+# Middleware for logging responses
+@app.middleware("http")
+async def log_response_info(request: Request, call_next):
     # Skip logging for OPTIONS requests
     if request.method == 'OPTIONS':
-        return response
+        return await call_next(request)
         
-    app.logger.debug(
+    response = await call_next(request)
+    logger.debug(
         f"Request: {request.method} {request.url} | "
-        f"Response: {response.status}"
+        f"Response: {response.status_code}"
     )
     return response
 
-# Remove the @app.before_request decorator and its function
-CORS(
-    app,
-    origins="*",  # Replace "*" with specific domains if needed, e.g., ["https://example.com"]
-    methods=["GET", "POST", "PUT", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-    supports_credentials=True  # Allow credentials (cookies, Authorization headers, etc.)
-)
-
-
-@app.route('/api')
+@app.get('/')
 def hello_world():
-    return 'Hello world'
+    return 'Hello, Welcome to Jobflow Server'
 
-
-# Apply the middleware to the user blueprint
-@user_blueprint.before_request
-async def protect_user_routes():
-    return await protect_routes()
-
-# Register your blueprints
-app.register_blueprint(auth_blueprint, url_prefix='/api/auth')
-app.register_blueprint(job_blueprint, url_prefix='/api/job')
-app.register_blueprint(user_blueprint, url_prefix='/api/user')
-app.register_blueprint(chat_blueprint, url_prefix='/api/chat')
+# Include routers
+app.include_router(auth_router, prefix='/api/auth')
+app.include_router(job_router, prefix='/api/job')
+app.include_router(user_router, prefix='/api/user')
+app.include_router(chat_router, prefix='/api/chat')
 
 def run_cron_jobs():
     logger.info("Starting cron job thread")
@@ -94,7 +99,9 @@ def run_cron_jobs():
         time.sleep(60)
 
 if __name__ == '__main__':
+    # Start the cron job thread
     cron_thread = threading.Thread(target=run_cron_jobs, daemon=True)
     cron_thread.start()
     
-    app.run(debug=True)
+    # Run the FastAPI app with Uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True)
