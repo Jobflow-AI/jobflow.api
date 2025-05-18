@@ -1,66 +1,54 @@
-name: EC2_deployment
+name: JobFlow-API-Deployment
 
 on:
   push:
-    # branches: [ "main" ]
-
-permissions:
-  contents: read
+    branches: [ "main" ]
 
 jobs:
-  deploy:
-    runs-on: self-hosted
-
+  build:
+    runs-on: ubuntu-latest
     steps:
-    # Step 1: Checkout the repository
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout source
+        uses: actions/checkout@v3
 
-    # Step 2: Set up Python 3.10
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v3
-      with:
-        python-version: "3.10"
+      - name: Login to docker hub
+        run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
 
-    # Step 3: Set environment variables
-    - name: Set environment variables
-      run: |
-        touch .env
-        echo "${{ secrets.PROD_ENV }}" > .env
+      - name: Build docker image
+        run: docker compose build
 
-    # Step 4: Create and activate the virtual environment
-    - name: Create and activate virtual environment
-      run: |
-        python3 -m venv venv
-        source venv/bin/activate  # Activate the virtual environment
+      - name: Push images to docker hub
+        run: |
+          docker tag jobflow-api:latest shivangm16/jobflow-api:latest
+          docker push shivangm16/jobflow-api:latest
 
-    # Step 5: Install dependencies
-    - name: Install dependencies
-      run: |
-        source venv/bin/activate  # Ensure the virtual environment is activated
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+  deploy:
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v3
 
-    # Step 6: Install Gunicorn
-    - name: Install Gunicorn
-      run: |
-        source venv/bin/activate
-        pip install gunicorn
+      - name: Create env file
+        run: |
+          touch .env
+          echo "${{ secrets.PROD_ENV }}" > .env
 
-    # Step 7: Deploy Flask application with Gunicorn
-    - name: Deploy Flask application with Gunicorn
-      run: |
-        source venv/bin/activate
-        # Stop any existing Flask application
-        pkill -f "gunicorn" || true
+      - name: Stop existing containers
+        run: docker compose down || true
 
-        # Export environment variables
-        export $(cat .env | xargs)
-        
-        # Start the Flask application using Gunicorn in the background
-        nohup gunicorn --bind 0.0.0.0:8000 app:app > flask.log 2>&1 &
+      - name: Pull latest images
+        run: |
+          docker pull shivangm16/jobflow-api:latest
 
-    # Step 8: Verify deployment
-    - name: Verify deployment
-      run: |
-        curl -f http://localhost:8000/ || echo "Deployment verification failed"
+      - name: Start containers with docker compose
+        run: |
+          docker compose -f docker-compose.prod.yml up -d
+
+      - name: Health check
+        run: |
+          sleep 15  # Give the API time to start
+          curl -f http://localhost:5001/api || exit 1
+
+      - name: Clean up old images
+        run: docker image prune -f
