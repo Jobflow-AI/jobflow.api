@@ -40,14 +40,14 @@ jobs:
           chmod +x /usr/local/bin/docker-compose
 
       - name: Stop existing containers
-        run: docker-compose down || true
+        run: docker-compose -f docker-compose.yml down || true
 
       - name: Pull image from docker hub
         run: docker pull shivangm16/jobflow-api:latest
 
       - name: Start containers with docker-compose
         run: |
-          docker-compose up -d
+          docker-compose -f docker-compose.yml up -d
 
       - name: Health check
         run: |
