@@ -19,7 +19,8 @@ WORKDIR /jobflow-api
 COPY requirements.txt .
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt --no-cache-dir && \
-    pip install gunicorn  # Add explicit gunicorn installation
+    pip install gunicorn && \
+    pip install uvicorn  # Add explicit uvicorn installation
 
 # Generate Prisma client (Fixed command)
 COPY db/ ./db/
@@ -58,8 +59,9 @@ WORKDIR /jobflow-api
 # Copy only the installed packages and application from the builder stage
 COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
 COPY --from=builder /jobflow-api /jobflow-api
-# Copy gunicorn binary specifically
+# Copy gunicorn and uvicorn binaries specifically
 COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/
+COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/
 
 # Expose the port your app runs on
 EXPOSE 8000
