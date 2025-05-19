@@ -65,5 +65,5 @@ COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/
 
 # Expose the port your app runs on
 EXPOSE 8000
-# Use Gunicorn to run the app
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--worker-class", "uvicorn.workers.UvicornWorker", "app:app"]
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
