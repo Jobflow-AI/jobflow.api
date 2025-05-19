@@ -52,4 +52,4 @@ jobs:
       - name: Health check
         run: |
           sleep 15
-          curl http://localhost:5001/health || exit 1
+          curl http://localhost:8000 || exit 1

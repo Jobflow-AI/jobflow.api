@@ -28,7 +28,7 @@ model ResumeSection {
   userId      String   @db.Uuid
   user        User     @relation(fields: [userId], references: [id])
   sectionType String   // @index
-  content     Json[]   // Changed to JSON array type
+  content     Json     @default("[]") // Explicit empty array default
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

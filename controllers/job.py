@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from db.prisma import db
-from middleware import get_current_user
 from function.crawler.crawler import scrapejobsdata
 from function.crawler.run_crawler import run_crawler
 from utils import serialize_job

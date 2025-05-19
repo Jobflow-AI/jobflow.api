@@ -10,6 +10,7 @@ JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key')
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
+        print(token)
         payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
         user_id = payload.get('id')
         

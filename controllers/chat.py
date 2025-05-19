@@ -7,6 +7,7 @@ import os
 import aiohttp
 import json
 from db.prisma import db
+from middleware.middleware import get_current_user
 
 # Define Pydantic models for request validation
 class QuestionRequest(BaseModel):
@@ -49,11 +50,28 @@ async def search_jobs(
     data: QuestionRequest,
     page: int = Query(1, description="Page number"),
     page_size: int = Query(10, description="Items per page"),
-    mock: bool = Query(False, description="Use mock data for testing")
+    mock: bool = Query(False, description="Use mock data for testing"),
+    current_user: dict = Depends(get_current_user)
 ):
     try:
-        user_query = data.question
+        # Get user's resume data
+        user = await db.user.find_unique(
+            where={"id": current_user.id},
+            include={'resume': True}
+        )
         
+        # Properly serialize resume sections
+        user_resume_data = []
+        if user and user.resume:
+            for section in user.resume:
+                section_data = {
+                    'sectionType': section.sectionType,
+                    'content': section.content
+                }
+                user_resume_data.append(section_data)
+        
+        user_query = data.question
+
         # For testing: Use mock data instead of calling the API
         if mock:
             print("Using mock data for testing")
@@ -62,11 +80,15 @@ async def search_jobs(
             # Use Gemini API to process the query
             model = genai.GenerativeModel("gemini-2.0-flash")
             
-            # Create a prompt based on the job_dataset.json examples
+            # Enhanced prompt that includes user's resume data
             prompt = f"""
             You are a job search assistant that converts natural language queries into structured search parameters.
             
-            Given a user's job search query, extract the relevant search parameters and format them as a JSON object.
+            USER'S RESUME DATA:
+            {json.dumps(user_resume_data) if user_resume_data else "No resume data available"}
+            
+            Given the user's resume and job search query, extract relevant search parameters and format them as a JSON object.
+            Also analyze how well the user's profile matches typical requirements for the requested job types.
             
             The JSON should follow this structure:
             {{
@@ -82,21 +104,29 @@ async def search_jobs(
                 "source": [list of job sources/portals] or null,
                 "posted": posting timeframe (string) or null,
                 "company": [list of company names] or null,
-                "industry": industry sector (string) or null
+                "industry": industry sector (string) or null,
+                "user_match_criteria": {{
+                    "skills_match": ["matched skills"],
+                    "experience_match": boolean,
+                    "education_match": boolean,
+                    "overall_match_percentage": number
+                }}
             }}
             
             For each field:
             - If the user doesn't specify a value, set it to null
             - For list fields, if only one value is specified, still use a list format
             - Convert numeric values to numbers (not strings)
+            - Calculate match percentages based on resume data
             
             User query: {user_query}
             
-            First, analyze the query step by step:
-            Step 1: Analyze the query.
-            Step 2: Extract the variables.
-            Step 3: Set unspecified fields to null.
-            Step 4: Generate the structured query in JSON format.
+            First, analyze the query and resume step by step:
+            Step 1: Analyze the query and user's profile.
+            Step 2: Extract the search variables.
+            Step 3: Compare with user's qualifications.
+            Step 4: Calculate match percentages.
+            Step 5: Generate the structured query in JSON format.
             
             Format your response as:
             ### Response:
@@ -107,7 +137,7 @@ async def search_jobs(
             
             response = await model.generate_content_async(prompt)
             chat_response = response.text
-        
+
         # Extract the JSON part from the response
         try:
             # Find the JSON object in the response
@@ -134,14 +164,24 @@ async def search_jobs(
         if search_params.get('title'):
             titles = search_params['title']
             if isinstance(titles, list) and titles:
-                # If multiple titles, use OR condition with regex
-                filter_conditions['OR'] = [
-                    {'title': {'contains': title, 'mode': 'insensitive'}} 
-                    for title in titles
-                ]
+                # If multiple titles, use OR condition with contains matching
+                title_conditions = []
+                for title in titles:
+                    # Split the search term into words for more flexible matching
+                    title_words = title.split()
+                    for word in title_words:
+                        title_conditions.append({
+                            'title': {'contains': word, 'mode': 'insensitive'}
+                        })
+                filter_conditions['OR'] = title_conditions
             elif isinstance(titles, str):
-                filter_conditions['title'] = {'contains': titles, 'mode': 'insensitive'}
-        
+                # Split single title into words for flexible matching
+                title_words = titles.split()
+                filter_conditions['OR'] = [
+                    {'title': {'contains': word, 'mode': 'insensitive'}}
+                    for word in title_words
+                ]
+
         # Handle job location - Using regex for better matching
         if search_params.get('job_location'):
             locations = search_params['job_location']
@@ -317,24 +357,89 @@ async def search_jobs(
             take=page_size,
             include={'company': True}
         )
+        print(f"Found {len(jobs)} jobs")
 
-        # print(jobs, "jobs are")
-        
         # Get total count for pagination
         total_count = await db.job.count(where=filter_conditions)
         
-        # Serialize the job data
-        serialized_jobs = [job.model_dump() for job in jobs]
-        print(serialized_jobs, "serialized jobs are")
-        
-        # Return a dictionary directly instead of using jsonify
+        # For each job, calculate match percentage with user's resume
+        if user_resume_data:
+            # Create a list to store jobs with match analysis
+            jobs_with_analysis = []
+            
+            for job in jobs:
+                # Create job details for matching
+                job_details = {
+                    "title": job.title,
+                    "description": job.job_description,
+                    "skills_required": job.skills_required,
+                    "experience": job.experience
+                }
+                
+                # Calculate match percentage using Gemini
+                match_prompt = f"""
+                Calculate the match percentage between the job requirements and the candidate's resume.
+                
+                JOB DETAILS:
+                {json.dumps(job_details)}
+                
+                CANDIDATE RESUME:
+                {json.dumps(user_resume_data)}
+                
+                Return a JSON object with:
+                {{
+                    "match_percentage": number (0-100),
+                    "matched_skills": [list of matching skills],
+                    "missing_skills": [list of missing but required skills],
+                    "experience_match": boolean,
+                    "analysis": "brief explanation of the match"
+                }}
+                """
+                
+                match_response = await model.generate_content_async(match_prompt)
+                match_text = match_response.text
+                
+                try:
+                    match_json_start = match_text.find('{')
+                    match_json_end = match_text.rfind('}') + 1
+                    match_data = json.loads(match_text[match_json_start:match_json_end])
+                    
+                    # Convert the job to a dictionary and add match analysis
+                    job_dict = job.model_dump()
+                    if job.company:
+                        job_dict['company'] = job.company.model_dump()
+                    job_dict['match_analysis'] = match_data
+                    jobs_with_analysis.append(job_dict)
+                    
+                except Exception as e:
+                    print(f"Error calculating job match: {e}")
+                    # Add job with default match analysis
+                    job_dict = job.model_dump()
+                    if job.company:
+                        job_dict['company'] = job.company.model_dump()
+                    job_dict['match_analysis'] = {
+                        "match_percentage": 0,
+                        "matched_skills": [],
+                        "missing_skills": [],
+                        "experience_match": False,
+                        "analysis": "Could not calculate match"
+                    }
+                    jobs_with_analysis.append(job_dict)
+
+            # Use the jobs with analysis instead of serializing again
+            serialized_jobs = jobs_with_analysis
+        else:
+            # If no resume data, just serialize the jobs normally
+            serialized_jobs = [job.model_dump() for job in jobs]
+
         return {
-            'jobs': serialized_jobs, 
-            'page': page, 
+            'jobs': serialized_jobs,
+            'page': page,
             'page_size': page_size,
             'total': total_count,
             'total_pages': (total_count + page_size - 1) // page_size,
-            'search_params': search_params
+            'search_params': search_params,
+            'user_resume_available': bool(user_resume_data)
         }
         
     except HTTPException:
@@ -342,7 +447,7 @@ async def search_jobs(
     except Exception as e:
         print(f"Error in search_jobs: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-    
+
 
 # Add a test endpoint to verify the mock data parsing
 @chat_router.get('/test')

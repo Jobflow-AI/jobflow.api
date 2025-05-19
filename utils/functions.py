@@ -1,7 +1,7 @@
 from db.prisma import db
 from fastapi import Depends
 from typing import Optional
-from .middleware import get_current_user
+from middleware import get_current_user
 
 async def checkExistingJob(jobdata, current_user = Depends(get_current_user)):
     try:

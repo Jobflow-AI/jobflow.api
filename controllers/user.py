@@ -1,3 +1,4 @@
+from sqlite3 import connect
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Response
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, EmailStr
@@ -51,12 +52,14 @@ user_router = APIRouter()
 @user_router.get('/get')
 async def get_user(current_user: dict = Depends(get_current_user)):
     try:
-        # Include job_statuses in the query
+        # Include job_statuses and resume sections in the query
         user = await db.user.find_unique(
             where={"id": current_user.id},
-            include={'job_statuses': True}
+            include={
+                'job_statuses': True,
+                'resume': True  # Include resume data
+            }
         )
-        
         if not user:
             raise HTTPException(status_code=400, detail="User does not exist")
         
@@ -333,7 +336,9 @@ async def upload_resume(
     resume: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
+    print(resume.filename, "here is the filename")
     if not allowed_file(resume.filename):
+        print("invalid")
         raise HTTPException(status_code=400, detail="Invalid file type. Only PDF and DOCX are supported.")
 
     try:
@@ -342,7 +347,6 @@ async def upload_resume(
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         file_key = f"resumes/{current_user.id}/{timestamp}_{resume.filename}"
         
-
         # Generate S3 URLs using utility function
         s3_data = process_resume_upload(resume, current_user.id)
 
@@ -363,6 +367,7 @@ async def upload_resume(
                 doc = fitz.open(temp_path)
                 doc.close()
             except Exception as e:
+                print(e, "here is the error")
                 raise HTTPException(status_code=400, detail=f"Invalid or corrupted PDF file: {str(e)}")
         
         # Extract and parse text
@@ -372,9 +377,9 @@ async def upload_resume(
             
         parsed_data = parse_resume(text)
         
-        # Update user resume URL after successful processing
+        # Update user resume URL after successful processing - Fixed to use current_user instead of g.user
         await db.user.update(
-            where={"id": g.user.id},
+            where={"id": current_user.id},  # Fixed: Using current_user from FastAPI dependency
             data={"resumeUrl": s3_data['get_url']}
         )
 
@@ -410,20 +415,28 @@ async def save_resume_data(
     current_user: dict = Depends(get_current_user)
 ):
     try:
-        if not resume_data:
+        if not resume_data or 'sections' not in resume_data:
             raise HTTPException(status_code=400, detail="No resume data provided")
             
-
         created_sections = []
-        for section_type, section_items in resume_data.items():
-            # Ensure proper list structure for JSON array
-            if not isinstance(section_items, list):
-                section_items = [section_items]
+        for section in resume_data['sections']:
+            section_type = section.get('sectionType')
+            content = section.get('content')
 
-            prisma_content = json.dumps(section_items)
+            print("=======>",type(content), "here is the content")
+            
+            # Ensure content is properly formatted JSON array
+            if content is None:
+                content = []  # Default to empty list
+            elif not isinstance(content, list):
+                content = [content]
+            
+            # Convert content to JSON string
+            content_str = json.dumps({"data": content})
+
             existing_section = await db.resumesection.find_first(
                 where={
-                    "userId": currentUser.id,
+                    "userId": current_user.id,
                     "sectionType": section_type
                 }
             )
@@ -432,24 +445,24 @@ async def save_resume_data(
                 resume_section = await db.resumesection.update(
                     where={"id": existing_section.id},
                     data={
-                        "content": prisma_content,
-                        "user": {"connect": {"id": currentUser.id}}
+                        "content": content_str,  # Save as string
+                        "sectionType": section_type
                     }
                 )
             else:
                 resume_section = await db.resumesection.create(
                     data={
                         "sectionType": section_type,
-                        "content": prisma_content,
-                        "user": {"connect": {"id": currentUser.id}}
+                        "content": content_str,  # Save as string
+                        "userId": current_user.id,
                     }
                 )
             created_sections.append(resume_section)
 
-        return jsonify({
+        return {
             "success": True,
             "sections": [section.model_dump() for section in created_sections]
-        }), 200
+        }
 
     except HTTPException:
         raise

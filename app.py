@@ -4,6 +4,7 @@ from controllers.auth import auth_router
 from controllers.job import job_router
 from controllers.user import user_router
 from controllers.chat import chat_router
+from middleware import get_current_user
 import asyncio
 import pycron
 import threading
@@ -69,15 +70,26 @@ async def log_response_info(request: Request, call_next):
     )
     return response
 
-@app.get('/')
+@app.get('/', dependencies=[Depends(get_current_user)])
 def hello_world():
     return 'Hello, Welcome to Jobflow Server'
 
 # Include routers
 app.include_router(auth_router, prefix='/api/auth')
-app.include_router(job_router, prefix='/api/job')
-app.include_router(user_router, prefix='/api/user')
-app.include_router(chat_router, prefix='/api/chat')
+app.include_router(
+    job_router, 
+    prefix='/api/job',
+)
+app.include_router(
+    user_router, 
+    prefix='/api/user',
+    dependencies=[Depends(get_current_user)]  # Add authentication dependency
+)
+app.include_router(
+    chat_router, 
+    prefix='/api/chat',
+    dependencies=[Depends(get_current_user)]  # Add authentication dependency
+)
 
 def run_cron_jobs():
     logger.info("Starting cron job thread")
