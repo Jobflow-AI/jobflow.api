@@ -61,9 +61,10 @@ async def get_user(current_user: dict = Depends(get_current_user)):
             }
         )
         if not user:
+            print("user not exists")
             raise HTTPException(status_code=400, detail="User does not exist")
         
-        user_dict = user.model_dump() 
+        user_dict = user.model_dump()
         return {"success": True, "user": user_dict}
 
     except Exception as e:

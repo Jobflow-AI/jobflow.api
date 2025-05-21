@@ -50,7 +50,11 @@ app = FastAPI(title="Jobflow API", lifespan=lifespan)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  
+    allow_origins=[
+        "chrome-extension://mnndnbaglhlkhbdpbfifhojlcmjcfife",  # Your extension ID
+        "http://localhost:3000",  # For local development
+        # Add other specific origins as needed
+    ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
@@ -70,7 +74,7 @@ async def log_response_info(request: Request, call_next):
     )
     return response
 
-@app.get('/', dependencies=[Depends(get_current_user)])
+@app.get('/')
 def hello_world():
     return 'Hello, Welcome to Jobflow Server'
 

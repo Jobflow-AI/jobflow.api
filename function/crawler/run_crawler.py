@@ -31,11 +31,11 @@ async def run_crawler():
     # Todo :- Add more workday links.
 
     # LinkedIn
-    # await scrape_linkedin_jobs()    
+    await scrape_linkedin_jobs()    
     # Hourly
     # Todo :- Gemini RPM Issue.
 
-    # await scrape_glassdoor_jobs()   
+    await scrape_glassdoor_jobs()   
     # Daily
     # Todo :- Check & Scrape properly.
 

@@ -57,13 +57,8 @@ async def get_job(
         raise HTTPException(status_code=500, detail=str(e))
 
 @job_router.get('/get/id')
-async def getJobId():   
+async def getJobId(jobId: int = Query(1)):
     try:
-        # if not db.is_connected():
-        #     await db.connect()
-
-        jobId = request.args.get('jobId', default=1, type=int)
-
         # Fetch jobs from the database including the company relation
         job = await db.job.find_unique(
             where={"id": jobId},
@@ -72,11 +67,11 @@ async def getJobId():
         # Serialize the job data
         serialized_job = serialize_job(job) 
 
-        return jsonify({'job': serialized_job }), 200
+        return {'job': serialized_job}, 200
 
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
+        return {'error': str(e)}, 500
     
     # finally:
     #     # Disconnect Prisma client
@@ -91,21 +86,21 @@ async def get_companies_list():
         companies = await db.company.find_many()
 
         serialized_companies = [company.model_dump() for company in companies]
-        return jsonify({'companies': serialized_companies}), 200
+        return {'companies': serialized_companies}, 200
 
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
+        return {'error': str(e)}, 500
     
     # Remove the finally block with db.disconnect()
 
 
 @job_router.get('/scrape')
-async def scrape_job():   
+async def scrape_job(
+    portal: str = Query('', description="Job portal name"),
+    job_link: str = Query('', description="Job link")
+):   
     try:
-        portal = request.args.get("portal", default='', type=str) 
-        job_link = request.args.get("job_link", default='', type=str)
-
         print(job_link, portal, "here is info") 
 
         soup = await scrape_job_link(job_link, portal)
@@ -140,14 +135,13 @@ async def scrape_job():
         # elif portal == 'freelancer':
         #     await scrape_freelancer(soup) 
 
-        # print(jobdata)
         jobdata = await checkExistingJob(jobdata)
-        
+        print(jobdata, "here is jobdata")
         return jobdata
 
     except Exception as e:
         print(e, "here is the error")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
+        return {'error': str(e)}, 500
 
 @job_router.get('/expire')
 # @protect_route()
@@ -159,15 +153,15 @@ async def expire_jobs():
         # Run the job expiration process
         expired_count = await run_job_expiration()
         
-        return jsonify({
+        return {
             'success': True,
             'message': f'Successfully expired {expired_count} jobs',
             'expired_count': expired_count
-        }), 200
+        }, 200
     
     except Exception as e:
         print(f"Error in expire_jobs function: {e}")  # Output the error to the console for debugging
-        return jsonify({'error': str(e)}), 500
+        return {'error': str(e)}, 500
     
     # Remove the finally block with db.disconnect()
 
@@ -204,17 +198,17 @@ async def get_job_stats():
             }
         )
         
-        return jsonify({
+        return {
             'total_jobs': total_jobs,
             'active_jobs': active_jobs,
             'jobs_with_expired_end_date': expired_end_date,
             'jobs_older_than_30_days': old_jobs,
             'current_time': current_date.isoformat(),
             'thirty_days_ago': thirty_days_ago.isoformat()
-        }), 200
+        }, 200
     
     except Exception as e:
         print(f"Error in get_job_stats: {e}")
-        return jsonify({'error': str(e)}), 500
+        return {'error': str(e)}, 500
     
     # Remove the finally block with db.disconnect()
