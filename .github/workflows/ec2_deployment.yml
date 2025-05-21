@@ -43,12 +43,12 @@ jobs:
 
       - name: Start containers with docker compose
         run: |
-          docker compose -f docker-compose.yml up -d
+          docker compose up -d
 
       - name: Health check
         run: |
           sleep 15  # Give the API time to start
-          curl -f http://localhost:5001/api || exit 1
+          curl -f http://localhost:8000 || exit 1
 
       - name: Clean up old images
         run: docker image prune -f
