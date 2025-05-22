@@ -41,6 +41,10 @@ jobs:
         run: |
           docker pull shivangm16/jobflow-api:latest
 
+      - name: Build containers with no cache
+        run: |
+          docker-compose build --no-cache
+
       - name: Start containers with docker compose
         run: |
           docker-compose up -d

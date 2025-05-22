@@ -27,19 +27,21 @@ logger = logging.getLogger(__name__)
 # Define lifespan context manager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup code (previously in @app.on_event("startup"))
     try:
+        logger.info("Attempting to connect to database...")
         await init_db()
-        logger.info("Database connection established")
+        print("\n✅ Database connected successfully!\n")  # Terminal-friendly success message
+        logger.info("Database connection established and ready")
     except Exception as e:
+        print("\n❌ Database connection failed!\n")  # Terminal-friendly error message
         logger.error(f"Error connecting to database: {str(e)}")
     
-    yield  # This is where the app runs
+    yield
     
-    # Shutdown code (previously in @app.on_event("shutdown"))
     if db.is_connected():
         try:
             await db.disconnect()
+            print("\n🔌 Database connection closed\n")  # Terminal-friendly disconnect message
             logger.info("Database connection closed")
         except Exception as e:
             logger.error(f"Error disconnecting from database: {str(e)}")
