@@ -26,7 +26,8 @@ RUN pip install --upgrade pip && \
 COPY db/ ./db/
 COPY prisma/ ./prisma/
 RUN pip install prisma && \
-    prisma generate --schema=prisma/schema.prisma
+    prisma generate --schema=prisma/schema.prisma && \
+    prisma py fetch  
 
 # Copy the rest of the application code
 COPY . .

@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
         print("\n✅ Database connected successfully!\n")  # Terminal-friendly success message
         logger.info("Database connection established and ready")
     except Exception as e:
-        print("\n❌ Database connection failed!\n")  # Terminal-friendly error message
+        print(f"Error connecting to database: {str(e)}")  # Terminal-friendly error message
         logger.error(f"Error connecting to database: {str(e)}")
     
     yield
