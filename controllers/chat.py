@@ -138,18 +138,18 @@ async def search_jobs(
             response = await model.generate_content_async(prompt)
             chat_response = response.text
 
-        # Extract the JSON part from the response
-        try:
-            # Find the JSON object in the response
-            json_start = chat_response.find('{')
-            json_end = chat_response.rfind('}') + 1
-            if json_start == -1 or json_end == 0:
-                raise HTTPException(status_code=500, detail="Invalid response format from chat API")
-                
-            json_str = chat_response[json_start:json_end]
-            search_params = json.loads(json_str)
-        except Exception as e:
-            print(f"Error parsing JSON from chat API: {e}")
+# Extract the JSON part from the response
+try:
+# Find the JSON object in the response
+json_start = chat_response.find('{')
+json_end = chat_response.rfind('}') + 1
+if json_start == -1 or json_end == 0:
+raise ValueError("Invalid response format from chat API")
+json_str = chat_response[json_start:json_end]
+search_params = json.loads(json_str)
+except (ValueError, json.JSONDecodeError) as e:
+print(f"Error parsing JSON from chat API: {e}")
+raise HTTPException(status_code=500, detail="Failed to parse search parameters")
             raise HTTPException(status_code=500, detail="Failed to parse search parameters")
         
         if page < 1:
