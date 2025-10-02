@@ -50,16 +50,20 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Jobflow API", lifespan=lifespan)
 
 # CORS configuration
+import os
+origins = [
+"http://localhost:3000",  # For local development
+]
+if os.environ.get("ENVIRONMENT") == "production":
+origins = [
+"https://your-production-domain.com",  # Replace with your production domain
+]
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "chrome-extension://mnndnbaglhlkhbdpbfifhojlcmjcfife",  # Your extension ID
-        "http://localhost:3000",  # For local development
-        # Add other specific origins as needed
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+CORSMiddleware,
+allow_origins=origins,
+allow_credentials=True,
+allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+allow_headers=["Content-Type", "Authorization"],
 )
 
 # Middleware for logging responses
