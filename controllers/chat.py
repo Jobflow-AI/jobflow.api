@@ -135,8 +135,12 @@ async def search_jobs(
             }}
             """
             
-            response = await model.generate_content_async(prompt)
-            chat_response = response.text
+try:
+response = await model.generate_content_async(prompt)
+chat_response = response.text
+except Exception as e:
+print(f"Error calling Gemini API: {e}")
+raise HTTPException(status_code=500, detail="Failed to get response from chat API")
 
         # Extract the JSON part from the response
         try:
