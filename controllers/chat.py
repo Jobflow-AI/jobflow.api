@@ -157,10 +157,12 @@ async def search_jobs(
             
         skip = (page - 1) * page_size
         
-        # Build the filter based on search parameters
-        filter_conditions = {}
-        
-        # Handle job title (could be multiple) - Using regex for better matching
+# Build the filter based on search parameters
+filter_conditions = {}
+# Sanitize search parameters
+search_params = {k: sanitize_input(v) for k, v in search_params.items() if v}
+# Handle job title (could be multiple) - Using regex for better matching
+if search_params.get('title'):
         if search_params.get('title'):
             titles = search_params['title']
             if isinstance(titles, list) and titles:
