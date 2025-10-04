@@ -30,7 +30,12 @@ class TokenResponse(BaseModel):
 auth_router = APIRouter()
 
 DEFAULT_STATUSES = ["BOOKMARKED", "APPLIED", "ACCEPTED", "REJECTED"]
-JWT_SECRET = os.getenv('JWT_SECRET', 'your-secret-key')
+import secrets
+import sys
+JWT_SECRET = os.getenv('JWT_SECRET')
+if not JWT_SECRET:
+print("CRITICAL: JWT_SECRET environment variable not set. Aborting.")
+sys.exit(1)
 
 # Helper function to set JWT token
 async def create_token(user):
