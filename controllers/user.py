@@ -931,8 +931,10 @@ def create_resume_pdf(resume_data, company_name):
     }
 
     # Render and create PDF
-    template = Template(html_template)
-    html_content = template.render(**template_data)
+import bleach
+template = Template(html_template)
+sanitized_data = {k: bleach.clean(v) if isinstance(v, str) else v for k, v in template_data.items()}
+html_content = template.render(**sanitized_data)
     
     with open(temp_file.name, "w+b") as pdf_file:
         pisa_status = pisa.CreatePDF(
