@@ -67,16 +67,16 @@ async def get_user(current_user: dict = Depends(get_current_user)):
         user_dict = user.model_dump()
         return {"success": True, "user": user_dict}
 
-    except Exception as e:
-        print(e, "here is the error")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@user_router.put('/update')
-async def update_user(
-    update_data: UserUpdateRequest,
-    current_user: dict = Depends(get_current_user)
-):
+except Exception as e:
+print(f"Resume upload error: {str(e)}")
+raise HTTPException(status_code=500, detail=str(e))
+finally:
+# Cleanup temporary files
+if temp_dir and os.path.exists(temp_dir):
+for root, dirs, files in os.walk(temp_dir, topdown=False):
+for name in files:
+os.remove(os.path.join(root, name))
+os.rmdir(root)
     try:
         user = await db.user.find_unique(where={"id": current_user.id})
         if not user:
