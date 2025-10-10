@@ -56,15 +56,18 @@ async def create_user(user_data: UserRegister):
     # Hash the password
     hashed_password = bcrypt.hashpw(user_data.password.encode('utf-8'), bcrypt.gensalt())
     
-    try:
-        # Create a new user
-        user = await db.user.create(
-            data={
-                'email': user_data.email,
-                'name': user_data.name,
-                'password': hashed_password.decode('utf-8'),
-            }
-        )
+try:
+# Create a new user
+user = await db.user.create(
+data={
+'email': user_data.email,
+'name': user_data.name,
+'password': hashed_password.decode('utf-8'),
+}
+)
+except Exception as e:
+print(f"Error creating user: {e}")
+raise HTTPException(status_code=500, detail="Failed to create user")
 
         # Create default job statuses
         for status in DEFAULT_STATUSES:
